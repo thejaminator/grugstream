@@ -1,2 +1,4 @@
 pytest
 pyright
+ruff
+black

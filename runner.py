@@ -15,19 +15,16 @@ B_co = TypeVar("B_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
 
 
+def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
+    class AnonObservable(Observable[A_co]): # type: ignore
+        async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+            await subscribe(subscriber)
+
+    return AnonObservable()
+
+
 class Observable(ABC, Generic[A_co]):
     """Abstract base class for Observable."""
-
-    @abstractmethod
-    async def subscribe(self, subscriber: "Subscriber[A_co]") -> None:
-        """Subscribe async subscriber."""
-        pass
-
-    def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
-        return MappedObservable(source=self, func=func)
-
-    def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
-        return FilteredObservable(source=self, predicate=predicate)
 
     @staticmethod
     def from_iterable(iterable: list[A_co]) -> "Observable[A_co]":
@@ -38,6 +35,48 @@ class Observable(ABC, Generic[A_co]):
                 await subscriber.on_completed()
 
         return IterableObservable()
+
+    @staticmethod
+    def interval(time_unit: float) -> 'Observable[int]':
+        async def emit_values(subscriber: Subscriber[int], counter: int = 0) -> None:
+            ack = Acknowledgement.ok
+            while ack == Acknowledgement.ok:
+                ack = await subscriber.on_next(counter)
+                counter += 1
+                await asyncio.sleep(time_unit)
+
+        async def subscribe_async(subscriber: Subscriber[int]) -> None:
+            await emit_values(subscriber)
+
+        return create_observable(subscribe_async)
+
+    @abstractmethod
+    async def subscribe(self, subscriber: "Subscriber[A_co]") -> None:
+        """Subscribe async subscriber."""
+        pass
+
+    def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
+        return MappedObservable(source=self, func=func)
+
+    def map_async(self, func: Callable[[A_co], Awaitable[B_co]]) -> 'Observable[B_co]':
+        source = self
+
+        async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
+            async def on_next(value: A_co) -> Acknowledgement:
+                transformed_value = await func(value)
+                return await subscriber.on_next(transformed_value)
+
+            map_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await source.subscribe(map_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
+        return FilteredObservable(source=self, predicate=predicate)
+
 
     async def to_list(self) -> list[A_co]:
         result = []
@@ -51,6 +90,26 @@ class Observable(ABC, Generic[A_co]):
         await self.subscribe(list_subscriber)
 
         return result
+
+    def take(self, n: int) -> 'Observable[A_co]':
+        source = self
+        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
+            count = 0
+
+            async def on_next(value: A_co) -> Acknowledgement:
+                nonlocal count
+                count += 1
+                if count <= n:
+                    return await subscriber.on_next(value)
+                else:
+                    return Acknowledgement.stop
+
+            take_subscriber = create_subscriber(on_next=on_next)
+
+            await source.subscribe(take_subscriber)
+
+        return create_observable(subscribe_async)
+
 
 
     async def run_to_completion(self) -> None:
@@ -130,6 +189,7 @@ class PrintSubscriber(Subscriber[T_contra]):
     async def on_completed(self) -> None:
         print("Completed")
 
+
 RunToCompletionSubscriber = Subscriber()
 
 
@@ -144,7 +204,7 @@ class MappedObservable(Observable[R_co]):
 
     async def subscribe(self, subscriber: Subscriber[R_co]) -> None:
         async def on_next(value: A_co) -> Acknowledgement:  # type: ignore
-            transformed_value = self.func(value)
+            transformed_value = self.func(value) # type: ignore
             await subscriber.on_next(transformed_value)
             return Acknowledgement.ok
 
@@ -154,16 +214,15 @@ class MappedObservable(Observable[R_co]):
 
         await self.source.subscribe(map_subscriber)
 
+
 async def main():
     my_subscriber = PrintSubscriber()
 
-    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
-    stream = my_observable.map(lambda x: x * 2)
-    to_list = await stream.to_list()
-    await stream.subscribe(my_subscriber)
+    my_observable: Observable[int] = Observable.interval(time_unit=0.1)
+    stream = my_observable.map(lambda x: x * 2).take(15)
     await stream.subscribe(my_subscriber)
 
-    assert to_list == [2, 4, 6]
+
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(main())
