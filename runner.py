@@ -30,8 +30,8 @@ class Observable(ABC, Generic[A_co]):
 
     @staticmethod
     def from_iterable(iterable: list[A_co]) -> "Observable[A_co]":
-        class IterableObservable(Observable[B_co]):
-            async def subscribe(self, subscriber: Subscriber[B_co]) -> None:
+        class IterableObservable(Observable[A_co]):  # type: ignore
+            async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
                 for item in iterable:
                     await subscriber.on_next(item)
                 await subscriber.on_completed()
@@ -65,7 +65,7 @@ def create_subscriber(
 ) -> Subscriber[T_contra]:
     """Create an Subscriber from functions."""
 
-    class AnonymousSubscriber(Subscriber[T_contra]):
+    class AnonymousSubscriber(Subscriber[T_contra]):  # type: ignore
         async def on_next(self, value: T_contra) -> Acknowledgement:
             if on_next is not None:
                 return await on_next(value)
@@ -113,18 +113,22 @@ class PrintSubscriber(Subscriber[T_contra]):
         print("Completed")
 
 
-class MappedObservable(Observable[A_co]):
-    def __init__(self, source: Observable[A_co], func: Callable[[A_co], B_co]):
+# We introduce another TypeVar that can be used in our context
+R_co = TypeVar("R_co", covariant=True)
+
+
+class MappedObservable(Observable[R_co]):
+    def __init__(self, source: Observable[A_co], func: Callable[[A_co], R_co]):
         self.source = source
         self.func = func
 
-    async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
-        async def on_next(value: A_co) -> Acknowledgement:
+    async def subscribe(self, subscriber: Subscriber[R_co]) -> None:
+        async def on_next(value: A_co) -> Acknowledgement:  # type: ignore
             transformed_value = self.func(value)
             await subscriber.on_next(transformed_value)
             return Acknowledgement.ok
 
-        map_subscriber = create_subscriber(
+        map_subscriber: Subscriber[A_co] = create_subscriber(  # type: ignore
             on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
         )
 
@@ -132,7 +136,8 @@ class MappedObservable(Observable[A_co]):
 
 
 my_subscriber = PrintSubscriber()
-my_observable = Observable.from_iterable([1, 2, 3]).map(lambda x: x * 2)
+my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
+processed = my_observable.map(lambda x: x * 2)
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(my_observable.subscribe(my_subscriber))
