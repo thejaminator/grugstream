@@ -10,6 +10,7 @@ class Acknowledgement(str, Enum):
 
 
 A_co = TypeVar("A_co", covariant=True)
+B = TypeVar("B")
 B_co = TypeVar("B_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
 
@@ -37,6 +38,23 @@ class Observable(ABC, Generic[A_co]):
                 await subscriber.on_completed()
 
         return IterableObservable()
+
+    async def to_list(self) -> list[A_co]:
+        result = []
+
+        async def on_next(value: A_co) -> Acknowledgement:
+            result.append(value)
+            return Acknowledgement.ok
+
+        list_subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(list_subscriber)
+
+        return result
+
+
+    async def run_to_completion(self) -> None:
+        await self.subscribe(RunToCompletionSubscriber)
 
 
 class Subscriber(Generic[T_contra]):
@@ -112,6 +130,8 @@ class PrintSubscriber(Subscriber[T_contra]):
     async def on_completed(self) -> None:
         print("Completed")
 
+RunToCompletionSubscriber = Subscriber()
+
 
 # We introduce another TypeVar that can be used in our context
 R_co = TypeVar("R_co", covariant=True)
@@ -134,10 +154,16 @@ class MappedObservable(Observable[R_co]):
 
         await self.source.subscribe(map_subscriber)
 
+async def main():
+    my_subscriber = PrintSubscriber()
 
-my_subscriber = PrintSubscriber()
-my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
-processed = my_observable.map(lambda x: x * 2)
+    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
+    stream = my_observable.map(lambda x: x * 2)
+    to_list = await stream.to_list()
+    await stream.subscribe(my_subscriber)
+    await stream.subscribe(my_subscriber)
+
+    assert to_list == [2, 4, 6]
 
 loop = asyncio.get_event_loop()
-loop.run_until_complete(my_observable.subscribe(my_subscriber))
+loop.run_until_complete(main())
