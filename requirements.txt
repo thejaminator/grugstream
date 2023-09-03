@@ -4,3 +4,4 @@ ruff
 black
 anyio
 slist
+pydantic

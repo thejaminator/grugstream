@@ -68,17 +68,15 @@ class Observable(ABC, Generic[A_co]):
 
     @staticmethod
     def from_interval(interval_seconds: float) -> 'Observable[int]':
-        async def emit_values(subscriber: Subscriber[int], counter: int = 0) -> None:
+        async def emit_values(subscriber: Subscriber[int]) -> None:
+            counter = 0
             ack = Acknowledgement.ok
             while ack == Acknowledgement.ok:
                 ack = await subscriber.on_next(counter)
                 counter += 1
                 await anyio.sleep(interval_seconds)
 
-        async def subscribe_async(subscriber: Subscriber[int]) -> None:
-            await emit_values(subscriber)
-
-        return create_observable(subscribe_async)
+        return create_observable(emit_values)
 
     @staticmethod
     def from_repeat(
@@ -123,6 +121,7 @@ class Observable(ABC, Generic[A_co]):
     def map_async_par(
         self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
     ) -> 'Observable[B]':
+        source = self
         send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
 
         async def process_with_function(subscriber: Subscriber[B], tg: TaskGroup) -> None:
@@ -132,30 +131,33 @@ class Observable(ABC, Generic[A_co]):
                 async with semaphore:
                     result = await func(item)
                     ack = await subscriber.on_next(result)
-                if ack == Acknowledgement.stop:  # Stop producing more results
+                if ack == Acknowledgement.stop:
                     tg.cancel_scope.cancel()
 
             async for item in receive_stream:
                 tg.start_soon(process_item, item)
 
-            await subscriber.on_completed()
-
         async def subscribe_async(subscriber: Subscriber[B]) -> None:
-            async def on_next(value: A_co) -> Acknowledgement:
-                await send_stream.send(value)
-                return Acknowledgement.ok
+            try:
 
-            async def on_completed() -> None:
+                async def on_next(value: A_co) -> Acknowledgement:
+                    await send_stream.send(value)
+                    return Acknowledgement.ok
+
+                async def on_completed() -> None:
+                    await send_stream.aclose()
+
+                send_to_stream_subscriber = create_subscriber(on_next=on_next, on_completed=on_completed)
+
+                async with create_task_group() as tg:
+                    tg.start_soon(source.subscribe, send_to_stream_subscriber)
+                    tg.start_soon(process_with_function, subscriber, tg)
                 await subscriber.on_completed()
-                await send_stream.aclose()  # Close send stream to end the for loop in process_with_function
 
-            send_to_stream_subscriber = create_subscriber(
-                on_next=on_next, on_error=subscriber.on_error, on_completed=on_completed
-            )
-
-            async with create_task_group() as tg:
-                tg.start_soon(self.subscribe, send_to_stream_subscriber)
-                tg.start_soon(process_with_function, subscriber, tg)
+            except Exception as e:
+                await subscriber.on_error(e)
+            finally:
+                await send_stream.aclose()
 
         return create_observable(subscribe_async)
 
@@ -282,15 +284,13 @@ class Observable(ABC, Generic[A_co]):
             result.append(value)
             return Acknowledgement.ok
 
-        list_subscriber = create_subscriber(on_next=on_next)
-
+        list_subscriber: Subscriber[A_co] = create_subscriber(on_next=on_next)
         await self.subscribe(list_subscriber)
 
         return result
 
     async def to_slist(self) -> 'Slist[A_co]':
         return Slist(await self.to_list())
-
 
     async def to_set(self) -> set[A_co]:
         result = set()
@@ -334,6 +334,7 @@ class Observable(ABC, Generic[A_co]):
                 if count <= n:
                     return await subscriber.on_next(value)
                 else:
+                    await subscriber.on_completed()  # call on_completed when maximum count is reached
                     return Acknowledgement.stop
 
             take_subscriber = create_subscriber(on_next=on_next)
@@ -471,12 +472,15 @@ async def mock_api_call_2(item: str) -> str:
 
 async def main():
     # my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
-    my_observable: Observable[int] = Observable.from_interval(interval_seconds=0.01)
+    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
     stream = (
-        my_observable.map(lambda x: x * 2).map(lambda x: f"Number {x}").map_async_par(mock_api_call).print().take(20)
+        my_observable.map(lambda x: x * 2)
+        .map(lambda x: f"Number {x}")
+        .map_async_par(mock_api_call, max_par=3)
+        .print()
+        .to_list()
     )
-    result = await stream.to_list()
-    print(result)
+    done = await stream
 
 
 if __name__ == "__main__":
