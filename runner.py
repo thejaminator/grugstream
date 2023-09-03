@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
+from asyncio import TaskGroup
 from enum import Enum
 from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable
 
 import anyio
-from anyio import run, create_task_group, create_memory_object_stream
+from anyio import run, create_task_group, create_memory_object_stream, CancelScope
 
 
 class Acknowledgement(str, Enum):
@@ -40,8 +41,11 @@ class Observable(ABC, Generic[A_co]):
     def from_iterable(iterable: Iterable[A]) -> "Observable[A]":
         class IterableObservable(Observable[A]):  # type: ignore
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
-                for item in iterable:
-                    await subscriber.on_next(item)
+                ack = Acknowledgement.ok
+                while ack == Acknowledgement.ok:
+                    for item in iterable:
+                        ack = await subscriber.on_next(item)
+                        print(f"ack: {ack}")
                 await subscriber.on_completed()
 
         return IterableObservable()
@@ -50,8 +54,10 @@ class Observable(ABC, Generic[A_co]):
     def from_async_iterable(iterable: AsyncIterable[A]) -> "Observable[A]":
         class AsyncIterableObservable(Observable[A]):  # type: ignore
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
+                ack = Acknowledgement.ok
                 async for item in iterable:
-                    await subscriber.on_next(item)
+                    while ack == Acknowledgement.ok:
+                        ack = await subscriber.on_next(item)
                 await subscriber.on_completed()
 
         return AsyncIterableObservable()
@@ -104,29 +110,33 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def map_async_par(self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 100) -> 'Observable[B]':
-        send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
+    def map_async_par(self, func: Callable[[A_co], Awaitable[B]]) -> 'Observable[B]':
+        send_stream, receive_stream = create_memory_object_stream[A_co]()
 
-        async def process_with_function(subscriber: Subscriber[B]) -> None:
+        async def process_with_function(subscriber: Subscriber[B], cancel_scope: CancelScope) -> None:
             async for item in receive_stream:
-                result = await func(item)  # Here's utilization of your 'func'
-                await subscriber.on_next(result)  # Directly send result to next operation
+                result = await func(item)
+                await subscriber.on_next(result)
             await subscriber.on_completed()
+            cancel_scope.cancel()
 
         async def subscribe_async(subscriber: Subscriber[B]) -> None:
             async def on_next(value: A_co) -> Acknowledgement:
                 await send_stream.send(value)
                 return Acknowledgement.ok
 
+            async def on_completed() -> None:
+                await subscriber.on_completed()
+                await send_stream.aclose()  # Close send stream to end the for loop in process_with_function
+
             send_to_stream_subscriber = create_subscriber(
-                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+                on_next=on_next, on_error=subscriber.on_error, on_completed=on_completed
             )
 
             async with create_task_group() as tg:
-                # This is a separated task to send original observable's data into memory stream
-                tg.start_soon(self.subscribe, send_to_stream_subscriber)
-                # This another task is to pull data from memory stream, apply your function and transmit result
-                tg.start_soon(process_with_function, subscriber)
+                with CancelScope() as scope:
+                    tg.start_soon(self.subscribe, send_to_stream_subscriber)
+                    tg.start_soon(process_with_function, subscriber, scope)
 
         return create_observable(subscribe_async)
 
@@ -148,7 +158,7 @@ class Observable(ABC, Generic[A_co]):
         return FilteredObservable(source=self, predicate=predicate)
 
     def print(
-        self: "Observable[A_co]", printer: Callable[[A_co], None] = print, prefix: str = ""
+        self: "Observable[A_co]", prefix: str = "", printer: Callable[[A_co], None] = print
     ) -> "Observable[A_co]":
         return self.for_each(lambda x: printer(f"{prefix}{x}"))  # type: ignore
 
@@ -228,7 +238,15 @@ class Observable(ABC, Generic[A_co]):
 
 
 class Subscriber(Generic[T_contra]):
-    """Base class for Subscriber."""
+    """Base class for Subscriber.
+
+    From https://monix.io/docs/current/reactive/observable.html
+    To obey the contract and preserve back-pressure,
+    the Observable will have to wait for its result before it can pass the next element.
+    Ack can be either Continue (ok to send the next element) or Stop (we should shut down).
+    This way, we can stop the downstream processing (by calling onComplete) and the upstream
+     (returning Stop after onNext).
+    """
 
     @abstractmethod
     async def on_next(self, value: T_contra) -> Acknowledgement:
@@ -303,7 +321,6 @@ class PrintSubscriber(Subscriber[T_contra]):
 
 RunToCompletionSubscriber = Subscriber()
 
-
 # We introduce another TypeVar that can be used in our context
 R_co = TypeVar("R_co", covariant=True)
 
@@ -326,7 +343,7 @@ class MappedObservable(Observable[R_co]):
 
 
 async def mock_api_call(item: str) -> str:
-    await anyio.sleep(0.1)
+    await anyio.sleep(0.5)
     return f"Response from {item}"
 
 
@@ -336,18 +353,19 @@ async def mock_api_call_2(item: str) -> str:
 
 
 async def main():
-    my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
+    # my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
+    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
     stream = (
         my_observable.map(lambda x: x * 2)
-        .filter(lambda x: x % 10 == 0)
         .map(lambda x: f"Number {x}")
-        .map_async_par(mock_api_call)
         .print()
-        .map_async_par(mock_api_call_2)
+        .map_async(mock_api_call)
+        # .map_async_par(mock_api_call_2)
         .print()
-        .take(1)
+        .take(2)
     )
-    await stream.to_list()
+    result = await stream.to_list()
+    print(result)
 
 
 if __name__ == "__main__":
