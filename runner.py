@@ -1,4 +1,3 @@
-
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Callable, Awaitable, TypeVar, Generic
@@ -19,29 +18,29 @@ class Observable(ABC, Generic[A_co]):
     """Abstract base class for Observable."""
 
     @abstractmethod
-    async def subscribe(self, observer: "Observer[A_co]") -> None:
-        """Subscribe async observer."""
+    async def subscribe(self, subscriber: "Subscriber[A_co]") -> None:
+        """Subscribe async subscriber."""
         pass
 
     def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
-        return MappedObservable[B_co](source=self, func=func)
+        return MappedObservable(source=self, func=func)
 
     def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
         return FilteredObservable(source=self, predicate=predicate)
 
     @staticmethod
     def from_iterable(iterable: list[A_co]) -> "Observable[A_co]":
-        class IterableObservable(Observable[A_co]):
-            async def subscribe(self, observer: Observer[A_co]) -> None:
+        class IterableObservable(Observable[B_co]):
+            async def subscribe(self, subscriber: Subscriber[B_co]) -> None:
                 for item in iterable:
-                    await observer.on_next(item)
-                await observer.on_completed()
+                    await subscriber.on_next(item)
+                await subscriber.on_completed()
 
         return IterableObservable()
 
 
-class Observer(Generic[T_contra]):
-    """Base class for Observer."""
+class Subscriber(Generic[T_contra]):
+    """Base class for Subscriber."""
 
     @abstractmethod
     async def on_next(self, value: T_contra) -> Acknowledgement:
@@ -59,14 +58,14 @@ class Observer(Generic[T_contra]):
         pass
 
 
-def create_observer(
+def create_subscriber(
     on_next: Callable[[T_contra], Awaitable[Acknowledgement]] | None = None,
     on_error: Callable[[Exception], Awaitable[None]] | None = None,
     on_completed: Callable[[], Awaitable[None]] | None = None,
-) -> Observer[T_contra]:
-    """Create an Observer from functions."""
+) -> Subscriber[T_contra]:
+    """Create an Subscriber from functions."""
 
-    class AnonymousObserver(Observer[T_contra]):
+    class AnonymousSubscriber(Subscriber[T_contra]):
         async def on_next(self, value: T_contra) -> Acknowledgement:
             if on_next is not None:
                 return await on_next(value)
@@ -80,7 +79,7 @@ def create_observer(
             if on_completed is not None:
                 await on_completed()
 
-    return AnonymousObserver()
+    return AnonymousSubscriber()
 
 
 class FilteredObservable(Observable[A_co]):
@@ -88,21 +87,21 @@ class FilteredObservable(Observable[A_co]):
         self.source = source
         self.predicate = predicate
 
-    async def subscribe(self, observer: Observer[A_co]) -> None:
+    async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
         async def on_next(value: A_co) -> Acknowledgement:
             if self.predicate(value):
-                return await observer.on_next(value)
+                return await subscriber.on_next(value)
             return Acknowledgement.ok
 
-        filter_observer = create_observer(
+        filter_subscriber = create_subscriber(
             on_next=on_next,
-            on_error=observer.on_error,
-            on_completed=observer.on_completed,
+            on_error=subscriber.on_error,
+            on_completed=subscriber.on_completed,
         )
-        await self.source.subscribe(filter_observer)
+        await self.source.subscribe(filter_subscriber)
 
 
-class PrintObserver(Observer[T_contra]):
+class PrintSubscriber(Subscriber[T_contra]):
     async def on_next(self, value: T_contra) -> Acknowledgement:
         print(value)
         return Acknowledgement.ok
@@ -115,31 +114,25 @@ class PrintObserver(Observer[T_contra]):
 
 
 class MappedObservable(Observable[A_co]):
-    def __init__(self, source: Observable[A_co], func: Callable[[A_co], T_contra]):
+    def __init__(self, source: Observable[A_co], func: Callable[[A_co], B_co]):
         self.source = source
         self.func = func
 
-    async def subscribe(self, observer: Observer[A_co]) -> None:
-        this: MappedObservable[A_co] = self
-        func: Callable[[A_co], Any] = this.func
+    async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+        async def on_next(value: A_co) -> Acknowledgement:
+            transformed_value = self.func(value)
+            await subscriber.on_next(transformed_value)
+            return Acknowledgement.ok
 
-        class MapObserver(Observer[T_contra]):
-            async def on_next(self, value: T_contra) -> Acknowledgement:
-                transformed_value = this.func(value)
-                await observer.on_next(transformed_value)
-                return Acknowledgement.ok
+        map_subscriber = create_subscriber(
+            on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+        )
 
-            async def on_error(self, error: Exception) -> None:
-                await observer.on_error(error)
-
-            async def on_completed(self) -> None:
-                await observer.on_completed()
-
-        await self.source.subscribe(MapObserver())
+        await self.source.subscribe(map_subscriber)
 
 
-my_observer = PrintObserver()
+my_subscriber = PrintSubscriber()
 my_observable = Observable.from_iterable([1, 2, 3]).map(lambda x: x * 2)
 
 loop = asyncio.get_event_loop()
-loop.run_until_complete(my_observable.subscribe(my_observer))
+loop.run_until_complete(my_observable.subscribe(my_subscriber))
