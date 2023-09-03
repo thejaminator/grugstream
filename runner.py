@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable
+from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence
 
 import anyio
 from anyio import run, create_task_group, create_memory_object_stream, CancelScope
@@ -118,7 +118,7 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def map_async_par(
-            self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
+        self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
     ) -> 'Observable[B]':
         send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
 
@@ -172,6 +172,78 @@ class Observable(ABC, Generic[A_co]):
 
     def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
         return FilteredObservable(source=self, predicate=predicate)
+
+    def flatten_iterable(self: 'Observable[Iterable[B_co]]') -> 'Observable[A_co]':
+        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
+            async def on_next(iterable: Iterable[A_co]) -> Acknowledgement:
+                for item in iterable:
+                    ack = await subscriber.on_next(item)
+                    if ack == Acknowledgement.stop:
+                        return Acknowledgement.stop
+                return Acknowledgement.ok
+
+            flatten_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await self.subscribe(flatten_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def flatten_list(self: 'Observable[Sequence[A_co]]') -> 'Observable[A_co]':
+        return self.flatten_iterable()
+
+    def flatten_async_iterable(self: 'Observable[AsyncIterable[A]]') -> 'Observable[A]':
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            async def on_next(iterable: AsyncIterable[A]) -> Acknowledgement:
+                async for item in iterable:
+                    ack = await subscriber.on_next(item)
+                    if ack == Acknowledgement.stop:
+                        return Acknowledgement.stop
+                return Acknowledgement.ok
+
+            flatten_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await self.subscribe(flatten_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def flatten_optional(self: 'Observable[A_co | None]') -> 'Observable[A_co]':
+        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
+            async def on_next(value: A_co | None) -> Acknowledgement:
+                if value is not None:
+                    return await subscriber.on_next(value)
+                return Acknowledgement.ok
+
+            flatten_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await self.subscribe(flatten_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def flatten_observable(self: 'Observable[Observable[B_co]]') -> 'Observable[B_co]':
+        async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
+            async def on_inner_next(value: B_co) -> Acknowledgement:
+                return await subscriber.on_next(value)
+
+            async def on_next(inner_observable: Observable[B_co]) -> Acknowledgement:
+                inner_subscriber = create_subscriber(
+                    on_next=on_inner_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+                )
+                await inner_observable.subscribe(inner_subscriber)
+                return Acknowledgement.ok
+
+            flatten_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await self.subscribe(flatten_subscriber)
+
+        return create_observable(subscribe_async)
 
     def print(
         self: "Observable[A_co]", prefix: str = "", printer: Callable[[A_co], None] = print
