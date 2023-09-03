@@ -2,3 +2,4 @@ pytest
 pyright
 ruff
 black
+anyio

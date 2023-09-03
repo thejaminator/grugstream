@@ -1,7 +1,9 @@
-import asyncio
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Callable, Awaitable, TypeVar, Generic
+
+import anyio
+from anyio import run
 
 
 class Acknowledgement(str, Enum):
@@ -43,7 +45,7 @@ class Observable(ABC, Generic[A_co]):
             while ack == Acknowledgement.ok:
                 ack = await subscriber.on_next(counter)
                 counter += 1
-                await asyncio.sleep(time_unit)
+                await anyio.sleep(time_unit)
 
         async def subscribe_async(subscriber: Subscriber[int]) -> None:
             await emit_values(subscriber)
@@ -109,6 +111,37 @@ class Observable(ABC, Generic[A_co]):
 
         return result
 
+    async def to_set(self) -> set[A_co]:
+        result = set()
+
+        async def on_next(value: A_co) -> Acknowledgement:
+            result.add(value)
+            return Acknowledgement.ok
+
+        set_subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(set_subscriber)
+
+        return result
+
+    async def reduce(self, func: Callable[[A_co, A_co], A_co], initial: A_co) -> A_co:
+        result = initial
+
+        async def on_next(value: A_co) -> Acknowledgement:
+            nonlocal result
+            result = func(result, value)
+            return Acknowledgement.ok
+
+        reduce_subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(reduce_subscriber)
+
+        return result
+
+    async def sum(self: 'Observable[int | float]') -> int | float:
+        return await self.reduce(lambda a, b: a + b, 0)
+
+
     def take(self, n: int) -> 'Observable[A_co]':
         source = self
 
@@ -121,7 +154,6 @@ class Observable(ABC, Generic[A_co]):
                 if count <= n:
                     return await subscriber.on_next(value)
                 else:
-                    print("Stopping")
                     return Acknowledgement.stop
 
             take_subscriber = create_subscriber(on_next=on_next)
@@ -129,6 +161,14 @@ class Observable(ABC, Generic[A_co]):
             await source.subscribe(take_subscriber)
 
         return create_observable(subscribe_async)
+
+    def limit(self, n: int) -> 'Observable[A_co]':
+        # alias for take
+        return self.take(n)
+
+    async def first(self) -> A_co:
+        items = await self.take(1).to_list()
+        return items[0]
 
     async def run_to_completion(self) -> None:
         await self.subscribe(RunToCompletionSubscriber)
@@ -235,10 +275,11 @@ class MappedObservable(Observable[R_co]):
 async def main():
     my_subscriber = PrintSubscriber()
 
-    my_observable: Observable[int] = Observable.interval(time_unit=0.1)
-    stream = my_observable.map(lambda x: x * 2).print().filter(lambda x: x % 10 == 0).take(15)
-    await stream.subscribe(my_subscriber)
+    my_observable: Observable[int] = Observable.interval(time_unit=0.01)
+    stream = my_observable.map(lambda x: x * 2).print().filter(lambda x: x % 10 == 0).take(15).print()
+    await stream.to_list()
 
 
-loop = asyncio.get_event_loop()
-loop.run_until_complete(main())
+
+if __name__ == "__main__":
+    run(main)
