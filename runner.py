@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable
 
 import anyio
-from anyio import run, create_task_group
+from anyio import run, create_task_group, create_memory_object_stream
 
 
 class Acknowledgement(str, Enum):
@@ -104,37 +104,27 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    async def map_async_par(self, worker_count: int, func: Callable[[A_co], Awaitable[B]]) -> 'Observable[B]':
-        source = self
+    def map_async_par(self, func: Callable[[A_co], Awaitable[B]]) -> 'Observable[B]':
+        send_stream, receive_stream = create_memory_object_stream[A_co]()
 
-        async def worker(name: str, queue: anyio.abc.CapacityLimiter, subscriber: Subscriber[B]) -> None:
-            async with queue:  # This will wait if there is no place in the queue
-                while True:  # Repeat indefinitely. You may need some mechanism to break this loop.
-                    value = await queue.get()
-                    if value is None:
-                        break
-                    transformed_value = await func(value)
-                    await subscriber.on_next(name, transformed_value)
+        async def process_with_function(subscriber: Subscriber[B_co]) -> None:
+            async for item in receive_stream:
+                result = await func(item)  # Process function
+                await subscriber.on_next(result)  # Push the result to the subscriber
+            await subscriber.on_completed()
 
-        async def subscribe_async(subscriber: Subscriber[B]) -> None:
-            queue = anyio.create_queue(worker_count)
+        async def feed_to_stream(subscriber: Subscriber[A_co]) -> None:
+            async with send_stream:
+                await self.subscribe(subscriber)
 
-            async def on_next(value: A_co) -> Acknowledgement:
-                await queue.put(value)
-                return Acknowledgement.ok
+        async def on_next(value: A_co) -> Acknowledgement:
+            await send_stream.send(value)
+            return Acknowledgement.ok
 
-            map_subscriber = create_subscriber(
-                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
-            )
-
+        async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
             async with create_task_group() as tg:
-                for i in range(worker_count):
-                    await tg.spawn(worker, f"worker-{i}", queue, map_subscriber)
-                await source.subscribe(map_subscriber)
-                # Once all values have been received, you can add None to the queue
-                # which will signal to the workers they can stop
-                for i in range(worker_count):
-                    await queue.put(None)
+                tg.start_soon(feed_to_stream, subscriber)
+                tg.start_soon(process_with_function, subscriber)
 
         return create_observable(subscribe_async)
 
@@ -333,11 +323,28 @@ class MappedObservable(Observable[R_co]):
         await self.source.subscribe(map_subscriber)
 
 
-async def main():
-    my_subscriber = PrintSubscriber()
+async def mock_api_call(item: str) -> str:
+    await anyio.sleep(100)
+    return f"Response from {item}"
 
+
+async def mock_api_call_2(item: str) -> str:
+    await anyio.sleep(100)
+    return f"Another Response from {item}"
+
+
+async def main():
     my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
-    stream = my_observable.map(lambda x: x * 2).print().filter(lambda x: x % 10 == 0).take(15).print()
+    stream = (
+        my_observable.map(lambda x: x * 2)
+        .filter(lambda x: x % 10 == 0)
+        .map(lambda x: f"Number {x}")
+        .map_async_par(mock_api_call)
+        .print()
+        .map_async_par(mock_api_call_2)
+        .print()
+        .take(10)
+    )
     await stream.to_list()
 
 
