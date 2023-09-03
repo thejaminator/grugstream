@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence
+from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence, Hashable
 
 import anyio
-from anyio import run, create_task_group, create_memory_object_stream, CancelScope
+from anyio import run, create_task_group, create_memory_object_stream
 from anyio.abc import TaskGroup
+from slist import Slist
 
 
 class Acknowledgement(str, Enum):
@@ -18,6 +19,8 @@ B_co = TypeVar("B_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
 
 A = TypeVar('A')  # New type variable, without covariance
+
+CanHash = TypeVar("CanHash", bound=Hashable)
 
 
 def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
@@ -82,13 +85,13 @@ class Observable(ABC, Generic[A_co]):
         value: A,
         interval_seconds: float,
     ) -> "Observable[A]":
-        async def emit_values(subscriber: Subscriber[int]) -> None:
+        async def emit_values(subscriber: Subscriber[A]) -> None:
             ack = Acknowledgement.ok
             while ack == Acknowledgement.ok:
                 ack = await subscriber.on_next(value)
                 await anyio.sleep(interval_seconds)
 
-        async def subscribe_async(subscriber: Subscriber[int]) -> None:
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
             await emit_values(subscriber)
 
         return create_observable(subscribe_async)
@@ -173,9 +176,31 @@ class Observable(ABC, Generic[A_co]):
     def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
         return FilteredObservable(source=self, predicate=predicate)
 
-    def flatten_iterable(self: 'Observable[Iterable[B_co]]') -> 'Observable[A_co]':
-        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
-            async def on_next(iterable: Iterable[A_co]) -> Acknowledgement:
+    def distinct(self: 'Observable[CanHash]') -> 'Observable[CanHash]':
+        return self.distinct_by(lambda x: x)
+
+    def distinct_by(self: 'Observable[A]', key: Callable[[A], CanHash]) -> 'Observable[A_co]':
+        seen = set[CanHash]()
+
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            async def on_next(value: A) -> Acknowledgement:
+                hashable_value = key(value)
+                if hashable_value not in seen:
+                    seen.add(hashable_value)
+                    return await subscriber.on_next(value)
+                return Acknowledgement.ok
+
+            distinct_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await self.subscribe(distinct_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def flatten_iterable(self: 'Observable[Iterable[A]]') -> 'Observable[A]':
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            async def on_next(iterable: Iterable[A]) -> Acknowledgement:
                 for item in iterable:
                     ack = await subscriber.on_next(item)
                     if ack == Acknowledgement.stop:
@@ -262,6 +287,10 @@ class Observable(ABC, Generic[A_co]):
         await self.subscribe(list_subscriber)
 
         return result
+
+    async def to_slist(self) -> 'Slist[A_co]':
+        return Slist(await self.to_list())
+
 
     async def to_set(self) -> set[A_co]:
         result = set()

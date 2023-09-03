@@ -3,3 +3,4 @@ pyright
 ruff
 black
 anyio
+slist
