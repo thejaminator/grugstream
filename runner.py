@@ -42,10 +42,10 @@ class Observable(ABC, Generic[A_co]):
         class IterableObservable(Observable[A]):  # type: ignore
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 ack = Acknowledgement.ok
-                while ack == Acknowledgement.ok:
-                    for item in iterable:
-                        ack = await subscriber.on_next(item)
-                        print(f"ack: {ack}")
+                for item in iterable:
+                    if ack != Acknowledgement.ok:  # If not OK, then stop.
+                        break
+                    ack = await subscriber.on_next(item)
                 await subscriber.on_completed()
 
         return IterableObservable()
@@ -56,33 +56,40 @@ class Observable(ABC, Generic[A_co]):
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 ack = Acknowledgement.ok
                 async for item in iterable:
-                    while ack == Acknowledgement.ok:
-                        ack = await subscriber.on_next(item)
+                    if ack != Acknowledgement.ok:
+                        break
+                    ack = await subscriber.on_next(item)
                 await subscriber.on_completed()
 
         return AsyncIterableObservable()
 
     @staticmethod
-    def from_interval(time_unit: float) -> 'Observable[int]':
+    def from_interval(interval_seconds: float) -> 'Observable[int]':
         async def emit_values(subscriber: Subscriber[int], counter: int = 0) -> None:
             ack = Acknowledgement.ok
             while ack == Acknowledgement.ok:
                 ack = await subscriber.on_next(counter)
                 counter += 1
-                await anyio.sleep(time_unit)
+                await anyio.sleep(interval_seconds)
 
         async def subscribe_async(subscriber: Subscriber[int]) -> None:
             await emit_values(subscriber)
 
         return create_observable(subscribe_async)
 
+    @staticmethod
     def from_repeat(
-        self,
         value: A,
+        interval_seconds: float,
     ) -> "Observable[A]":
-        async def subscribe_async(subscriber: Subscriber[A]) -> None:
-            while True:
-                await subscriber.on_next(value)
+        async def emit_values(subscriber: Subscriber[int]) -> None:
+            ack = Acknowledgement.ok
+            while ack == Acknowledgement.ok:
+                ack = await subscriber.on_next(value)
+                await anyio.sleep(interval_seconds)
+
+        async def subscribe_async(subscriber: Subscriber[int]) -> None:
+            await emit_values(subscriber)
 
         return create_observable(subscribe_async)
 
@@ -110,13 +117,15 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def map_async_par(self, func: Callable[[A_co], Awaitable[B]]) -> 'Observable[B]':
-        send_stream, receive_stream = create_memory_object_stream[A_co]()
+    def map_async_par(self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50) -> 'Observable[B]':
+        send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
 
-        async def process_with_function(subscriber: Subscriber[B], cancel_scope: CancelScope) -> None:
+        async def process_with_function(subscriber: Subscriber[B], cancel_scope) -> None:
             async for item in receive_stream:
                 result = await func(item)
-                await subscriber.on_next(result)
+                ack = await subscriber.on_next(result)
+                if ack == Acknowledgement.stop:  # Stop producing more results
+                    break
             await subscriber.on_completed()
             cancel_scope.cancel()
 
@@ -128,15 +137,15 @@ class Observable(ABC, Generic[A_co]):
             async def on_completed() -> None:
                 await subscriber.on_completed()
                 await send_stream.aclose()  # Close send stream to end the for loop in process_with_function
-
-            send_to_stream_subscriber = create_subscriber(
-                on_next=on_next, on_error=subscriber.on_error, on_completed=on_completed
-            )
+                cancel_scope.cancel()
 
             async with create_task_group() as tg:
-                with CancelScope() as scope:
-                    tg.start_soon(self.subscribe, send_to_stream_subscriber)
-                    tg.start_soon(process_with_function, subscriber, scope)
+                cancel_scope = tg.cancel_scope
+                send_to_stream_subscriber = create_subscriber(
+                    on_next=on_next, on_error=subscriber.on_error, on_completed=on_completed
+                )
+                tg.start_soon(self.subscribe, send_to_stream_subscriber)
+                tg.start_soon(process_with_function, subscriber, cancel_scope)
 
         return create_observable(subscribe_async)
 
@@ -343,7 +352,7 @@ class MappedObservable(Observable[R_co]):
 
 
 async def mock_api_call(item: str) -> str:
-    await anyio.sleep(0.5)
+    await anyio.sleep(0.1)
     return f"Response from {item}"
 
 
@@ -354,15 +363,9 @@ async def mock_api_call_2(item: str) -> str:
 
 async def main():
     # my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
-    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
+    my_observable: Observable[int] = Observable.from_interval(interval_seconds=0.01)
     stream = (
-        my_observable.map(lambda x: x * 2)
-        .map(lambda x: f"Number {x}")
-        .print()
-        .map_async(mock_api_call)
-        # .map_async_par(mock_api_call_2)
-        .print()
-        .take(2)
+        my_observable.map(lambda x: x * 2).map(lambda x: f"Number {x}").map_async_par(mock_api_call).print().take(100)
     )
     result = await stream.to_list()
     print(result)
