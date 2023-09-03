@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Callable, Awaitable, TypeVar, Generic
+from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable
 
 import anyio
-from anyio import run
+from anyio import run, create_task_group
 
 
 class Acknowledgement(str, Enum):
@@ -15,6 +15,8 @@ A_co = TypeVar("A_co", covariant=True)
 B = TypeVar("B")
 B_co = TypeVar("B_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
+
+A = TypeVar('A')  # New type variable, without covariance
 
 
 def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
@@ -28,10 +30,16 @@ def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]
 class Observable(ABC, Generic[A_co]):
     """Abstract base class for Observable."""
 
+    def from_one(self, value: A) -> "Observable[A]":
+        return self.from_iterable([value])
+
+    def from_one_option(self, value: A | None) -> "Observable[A]":
+        return self.from_iterable([value]) if value is not None else self.from_iterable([])
+
     @staticmethod
-    def from_iterable(iterable: list[A_co]) -> "Observable[A_co]":
-        class IterableObservable(Observable[A_co]):  # type: ignore
-            async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+    def from_iterable(iterable: Iterable[A]) -> "Observable[A]":
+        class IterableObservable(Observable[A]):  # type: ignore
+            async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 for item in iterable:
                     await subscriber.on_next(item)
                 await subscriber.on_completed()
@@ -39,7 +47,17 @@ class Observable(ABC, Generic[A_co]):
         return IterableObservable()
 
     @staticmethod
-    def interval(time_unit: float) -> 'Observable[int]':
+    def from_async_iterable(iterable: AsyncIterable[A]) -> "Observable[A]":
+        class AsyncIterableObservable(Observable[A]):  # type: ignore
+            async def subscribe(self, subscriber: Subscriber[A]) -> None:
+                async for item in iterable:
+                    await subscriber.on_next(item)
+                await subscriber.on_completed()
+
+        return AsyncIterableObservable()
+
+    @staticmethod
+    def from_interval(time_unit: float) -> 'Observable[int]':
         async def emit_values(subscriber: Subscriber[int], counter: int = 0) -> None:
             ack = Acknowledgement.ok
             while ack == Acknowledgement.ok:
@@ -49,6 +67,16 @@ class Observable(ABC, Generic[A_co]):
 
         async def subscribe_async(subscriber: Subscriber[int]) -> None:
             await emit_values(subscriber)
+
+        return create_observable(subscribe_async)
+
+    def from_repeat(
+        self,
+        value: A,
+    ) -> "Observable[A]":
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            while True:
+                await subscriber.on_next(value)
 
         return create_observable(subscribe_async)
 
@@ -73,6 +101,40 @@ class Observable(ABC, Generic[A_co]):
             )
 
             await source.subscribe(map_subscriber)
+
+        return create_observable(subscribe_async)
+
+    async def map_async_par(self, worker_count: int, func: Callable[[A_co], Awaitable[B]]) -> 'Observable[B]':
+        source = self
+
+        async def worker(name: str, queue: anyio.abc.CapacityLimiter, subscriber: Subscriber[B]) -> None:
+            async with queue:  # This will wait if there is no place in the queue
+                while True:  # Repeat indefinitely. You may need some mechanism to break this loop.
+                    value = await queue.get()
+                    if value is None:
+                        break
+                    transformed_value = await func(value)
+                    await subscriber.on_next(name, transformed_value)
+
+        async def subscribe_async(subscriber: Subscriber[B]) -> None:
+            queue = anyio.create_queue(worker_count)
+
+            async def on_next(value: A_co) -> Acknowledgement:
+                await queue.put(value)
+                return Acknowledgement.ok
+
+            map_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            async with create_task_group() as tg:
+                for i in range(worker_count):
+                    await tg.spawn(worker, f"worker-{i}", queue, map_subscriber)
+                await source.subscribe(map_subscriber)
+                # Once all values have been received, you can add None to the queue
+                # which will signal to the workers they can stop
+                for i in range(worker_count):
+                    await queue.put(None)
 
         return create_observable(subscribe_async)
 
@@ -124,10 +186,10 @@ class Observable(ABC, Generic[A_co]):
 
         return result
 
-    async def reduce(self, func: Callable[[A_co, A_co], A_co], initial: A_co) -> A_co:
+    async def reduce(self, func: Callable[[A, A], A], initial: A) -> A:
         result = initial
 
-        async def on_next(value: A_co) -> Acknowledgement:
+        async def on_next(value: A) -> Acknowledgement:
             nonlocal result
             result = func(result, value)
             return Acknowledgement.ok
@@ -140,7 +202,6 @@ class Observable(ABC, Generic[A_co]):
 
     async def sum(self: 'Observable[int | float]') -> int | float:
         return await self.reduce(lambda a, b: a + b, 0)
-
 
     def take(self, n: int) -> 'Observable[A_co]':
         source = self
@@ -275,10 +336,9 @@ class MappedObservable(Observable[R_co]):
 async def main():
     my_subscriber = PrintSubscriber()
 
-    my_observable: Observable[int] = Observable.interval(time_unit=0.01)
+    my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
     stream = my_observable.map(lambda x: x * 2).print().filter(lambda x: x % 10 == 0).take(15).print()
     await stream.to_list()
-
 
 
 if __name__ == "__main__":
