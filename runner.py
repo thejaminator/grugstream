@@ -104,26 +104,28 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def map_async_par(self, func: Callable[[A_co], Awaitable[B]]) -> 'Observable[B]':
-        send_stream, receive_stream = create_memory_object_stream[A_co]()
+    def map_async_par(self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 100) -> 'Observable[B]':
+        send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
 
-        async def process_with_function(subscriber: Subscriber[B_co]) -> None:
+        async def process_with_function(subscriber: Subscriber[B]) -> None:
             async for item in receive_stream:
-                result = await func(item)  # Process function
-                await subscriber.on_next(result)  # Push the result to the subscriber
+                result = await func(item)  # Here's utilization of your 'func'
+                await subscriber.on_next(result)  # Directly send result to next operation
             await subscriber.on_completed()
 
-        async def feed_to_stream(subscriber: Subscriber[A_co]) -> None:
-            async with send_stream:
-                await self.subscribe(subscriber)
+        async def subscribe_async(subscriber: Subscriber[B]) -> None:
+            async def on_next(value: A_co) -> Acknowledgement:
+                await send_stream.send(value)
+                return Acknowledgement.ok
 
-        async def on_next(value: A_co) -> Acknowledgement:
-            await send_stream.send(value)
-            return Acknowledgement.ok
+            send_to_stream_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
 
-        async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
             async with create_task_group() as tg:
-                tg.start_soon(feed_to_stream, subscriber)
+                # This is a separated task to send original observable's data into memory stream
+                tg.start_soon(self.subscribe, send_to_stream_subscriber)
+                # This another task is to pull data from memory stream, apply your function and transmit result
                 tg.start_soon(process_with_function, subscriber)
 
         return create_observable(subscribe_async)
@@ -324,12 +326,12 @@ class MappedObservable(Observable[R_co]):
 
 
 async def mock_api_call(item: str) -> str:
-    await anyio.sleep(100)
+    await anyio.sleep(0.1)
     return f"Response from {item}"
 
 
 async def mock_api_call_2(item: str) -> str:
-    await anyio.sleep(100)
+    await anyio.sleep(2)
     return f"Another Response from {item}"
 
 
@@ -343,7 +345,7 @@ async def main():
         .print()
         .map_async_par(mock_api_call_2)
         .print()
-        .take(10)
+        .take(1)
     )
     await stream.to_list()
 
