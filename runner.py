@@ -1,7 +1,7 @@
+import asyncio
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Callable, Awaitable, TypeVar, Generic
-import asyncio
+from typing import Callable, Awaitable, TypeVar, Generic
 
 
 class Acknowledgement(str, Enum):
@@ -16,7 +16,7 @@ T_contra = TypeVar("T_contra", contravariant=True)
 
 
 def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
-    class AnonObservable(Observable[A_co]): # type: ignore
+    class AnonObservable(Observable[A_co]):  # type: ignore
         async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
             await subscribe(subscriber)
 
@@ -74,9 +74,27 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
+    def for_each(self, func: Callable[[A_co], None]) -> "Observable[A_co]":
+        def return_original(value: A_co) -> A_co:
+            func(value)
+            return value
+
+        return self.map(return_original)
+
+    def for_each_async(self, func: Callable[[A_co], Awaitable[None]]) -> "Observable[A_co]":
+        async def return_original(value: A_co) -> A_co:
+            await func(value)
+            return value
+
+        return self.map_async(return_original)
+
     def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
         return FilteredObservable(source=self, predicate=predicate)
 
+    def print(
+        self: "Observable[A_co]", printer: Callable[[A_co], None] = print, prefix: str = ""
+    ) -> "Observable[A_co]":
+        return self.for_each(lambda x: printer(f"{prefix}{x}"))  # type: ignore
 
     async def to_list(self) -> list[A_co]:
         result = []
@@ -93,6 +111,7 @@ class Observable(ABC, Generic[A_co]):
 
     def take(self, n: int) -> 'Observable[A_co]':
         source = self
+
         async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
             count = 0
 
@@ -102,6 +121,7 @@ class Observable(ABC, Generic[A_co]):
                 if count <= n:
                     return await subscriber.on_next(value)
                 else:
+                    print("Stopping")
                     return Acknowledgement.stop
 
             take_subscriber = create_subscriber(on_next=on_next)
@@ -109,8 +129,6 @@ class Observable(ABC, Generic[A_co]):
             await source.subscribe(take_subscriber)
 
         return create_observable(subscribe_async)
-
-
 
     async def run_to_completion(self) -> None:
         await self.subscribe(RunToCompletionSubscriber)
@@ -204,9 +222,8 @@ class MappedObservable(Observable[R_co]):
 
     async def subscribe(self, subscriber: Subscriber[R_co]) -> None:
         async def on_next(value: A_co) -> Acknowledgement:  # type: ignore
-            transformed_value = self.func(value) # type: ignore
-            await subscriber.on_next(transformed_value)
-            return Acknowledgement.ok
+            transformed_value = self.func(value)  # type: ignore
+            return await subscriber.on_next(transformed_value)
 
         map_subscriber: Subscriber[A_co] = create_subscriber(  # type: ignore
             on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
@@ -219,9 +236,8 @@ async def main():
     my_subscriber = PrintSubscriber()
 
     my_observable: Observable[int] = Observable.interval(time_unit=0.1)
-    stream = my_observable.map(lambda x: x * 2).take(15)
+    stream = my_observable.map(lambda x: x * 2).print().filter(lambda x: x % 10 == 0).take(15)
     await stream.subscribe(my_subscriber)
-
 
 
 loop = asyncio.get_event_loop()
