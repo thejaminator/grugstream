@@ -1,9 +1,11 @@
+import datetime
 from abc import ABC, abstractmethod
+from collections import deque
 from enum import Enum
 from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence, Hashable
 
 import anyio
-from anyio import run, create_task_group, create_memory_object_stream
+from anyio import run, create_task_group, create_memory_object_stream, EndOfStream
 from anyio.abc import TaskGroup
 from slist import Slist
 
@@ -67,27 +69,27 @@ class Observable(ABC, Generic[A_co]):
         return AsyncIterableObservable()
 
     @staticmethod
-    def from_interval(interval_seconds: float) -> 'Observable[int]':
+    def from_interval(seconds: float) -> 'Observable[int]':
         async def emit_values(subscriber: Subscriber[int]) -> None:
             counter = 0
             ack = Acknowledgement.ok
             while ack == Acknowledgement.ok:
                 ack = await subscriber.on_next(counter)
                 counter += 1
-                await anyio.sleep(interval_seconds)
+                await anyio.sleep(seconds)
 
         return create_observable(emit_values)
 
     @staticmethod
     def from_repeat(
         value: A,
-        interval_seconds: float,
+        seconds: float,
     ) -> "Observable[A]":
         async def emit_values(subscriber: Subscriber[A]) -> None:
             ack = Acknowledgement.ok
             while ack == Acknowledgement.ok:
                 ack = await subscriber.on_next(value)
-                await anyio.sleep(interval_seconds)
+                await anyio.sleep(seconds)
 
         async def subscribe_async(subscriber: Subscriber[A]) -> None:
             await emit_values(subscriber)
@@ -272,6 +274,55 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
+    def throttle(self, seconds: float, max_buffer_size: int = 1) -> 'Observable[A_co]':
+        source = self
+        send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
+
+        class ThrottledObservable(Observable[A_co]):
+            async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+                async def wait_and_forward() -> None:
+                    async with create_task_group() as tg:
+                        # Producer task
+                        tg.start_soon(source.subscribe, send_to_stream_subscriber)
+
+                        # Consumer task
+                        tg.start_soon(send_periodically)
+
+                async def send_periodically() -> None:
+                    while True:
+                        await anyio.sleep(seconds)
+                        try:
+                            value = receive_stream.receive_nowait()
+                            response = await subscriber.on_next(value)
+                            if response == Acknowledgement.stop:
+                                await subscriber.on_completed()
+                                break
+                        except anyio.WouldBlock:
+                            # No new elements, keep waiting
+                            continue
+                        except EndOfStream:
+                            await subscriber.on_completed()
+                            break
+
+                async def on_next(value: A_co) -> Acknowledgement:
+                    await send_stream.send(value)
+                    return Acknowledgement.ok
+
+                async def on_completed() -> None:
+                    await send_stream.aclose()
+
+                async def on_error(e: Exception) -> None:
+                    send_stream.close()
+                    await subscriber.on_error(e)
+
+                send_to_stream_subscriber = create_subscriber(
+                    on_next=on_next, on_completed=on_completed, on_error=on_error
+                )
+
+                await wait_and_forward()
+
+        return ThrottledObservable()
+
     def print(
         self: "Observable[A_co]", prefix: str = "", printer: Callable[[A_co], None] = print
     ) -> "Observable[A_co]":
@@ -345,7 +396,6 @@ class Observable(ABC, Generic[A_co]):
                         yield item
                     processing_limit.release_on_behalf_of(item)
 
-
     async def reduce(self, func: Callable[[A, A], A], initial: A) -> A:
         result = initial
 
@@ -381,6 +431,30 @@ class Observable(ABC, Generic[A_co]):
             take_subscriber = create_subscriber(on_next=on_next)
 
             await source.subscribe(take_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def take_last(self, n: int) -> 'Observable[A_co]':
+        source = self
+        buffer = deque(maxlen=n)
+
+        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
+            async def on_next(value: A_co) -> Acknowledgement:
+                buffer.append(value)
+                return Acknowledgement.ok
+
+            async def on_completed() -> None:
+                for item in buffer:
+                    await subscriber.on_next(item)
+                await subscriber.on_completed()
+
+            take_last_subscriber = create_subscriber(
+                on_next=on_next,
+                on_completed=on_completed,
+                on_error=subscriber.on_error,
+            )
+
+            await source.subscribe(take_last_subscriber)
 
         return create_observable(subscribe_async)
 
@@ -513,10 +587,11 @@ async def mock_api_call_2(item: str) -> str:
 
 async def main():
     # my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
-    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3,4])
+    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3, 4])
     stream = (
         my_observable.map(lambda x: x * 2)
         .map(lambda x: f"Number {x}")
+        # .throttle(seconds=0.1)
         .map_async_par(mock_api_call, max_par=3)
         .to_async_iterable()
     )
