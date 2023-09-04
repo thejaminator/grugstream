@@ -210,6 +210,22 @@ class Observable(ABC, Generic[A_co]):
 
         return self.map(return_original)
 
+    def for_each_to_list(self, collect_list: list[A]) -> "Observable[A]":
+        def append_to_list(value: A) -> A:
+            collect_list.append(value)
+            return value
+
+        return self.map(append_to_list)
+
+    def for_each_to_file(
+        self, file_path: Path, mode: OpenTextMode = 'a', serialize: Callable[[A], str] = str, write_newline: bool = True
+    ) -> "Observable[A]":
+        async def append_to_file(value: A) -> None:
+            async with await anyio.open_file(file_path, mode=mode) as file:
+                await file.write(serialize(value) + ('\n' if write_newline else ''))
+
+        return self.for_each_async(append_to_file)
+
     def for_each_async(self, func: Callable[[A_co], Awaitable[None]]) -> "Observable[A_co]":
         async def return_original(value: A_co) -> A_co:
             await func(value)
@@ -473,10 +489,12 @@ class Observable(ABC, Generic[A_co]):
                         yield item
                     processing_limit.release_on_behalf_of(item)
 
-    async def to_file(self: "Observable[str]", file_path: Path, mode: OpenTextMode = 'a') -> None:
+    async def to_file(
+        self, file_path: Path, mode: OpenTextMode = 'a', serialize: Callable[[A], str] = str, write_newline: bool = True
+    ) -> None:
         async def on_next(value: str) -> Acknowledgement:
             async with await anyio.open_file(file_path, mode=mode) as file:
-                await file.write(value + '\n')
+                await file.write(value + ('\n' if write_newline else ''))
             return Acknowledgement.ok
 
         file_subscriber = create_subscriber(on_next=on_next)

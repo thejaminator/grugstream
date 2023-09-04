@@ -6,7 +6,7 @@ from grugstream import Observable
 async def mock_http_call_to_google(item: str) -> str:
     # Simulate the asynchronous delay of an HTTP request
     await anyio.sleep(1)
-    return "Response from Google"
+    return f"Response from Google {item}"
 
 
 async def main():
@@ -17,7 +17,7 @@ async def main():
         .map_async(lambda item: mock_http_call_to_google(item))
     )
 
-    # Actually start the stream - results into a list
+    # Actually start the stream and collect the results into a list
     results = await observable.to_list()
 
     for response in results:
