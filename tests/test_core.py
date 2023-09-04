@@ -4,7 +4,7 @@ from pathlib import Path
 import anyio
 import pytest
 
-from grubstream.core import (
+from grugstream.core import (
     Observable,
 )  # replace 'your_module' with the actual module name
 

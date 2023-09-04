@@ -2,7 +2,7 @@
 [tool.black]
 line-length = 120
 skip-string-normalization = true
-target-version = ['py36', 'py37', 'py38']
+target-version = ['py311']
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -18,6 +18,13 @@ exclude = '''
   | dist
 )/
 '''
+
+[tool.ruff]
+line-length = 120
+
+# Ignore `E501` line length in these
+[tool.ruff.extend-per-file-ignores]
+"tests/*" = ["E501"]
 
 
 
