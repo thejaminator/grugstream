@@ -300,9 +300,9 @@ class Observable(ABC, Generic[A_co]):
                         tg.start_soon(source.subscribe, send_to_stream_subscriber)
 
                         # Consumer task
-                        tg.start_soon(send_periodically)
+                        tg.start_soon(send_periodically, tg)
 
-                async def send_periodically() -> None:
+                async def send_periodically(tg: TaskGroup) -> None:
                     while True:
                         await anyio.sleep(seconds)
                         try:
@@ -310,6 +310,7 @@ class Observable(ABC, Generic[A_co]):
                             response = await subscriber.on_next(value)  # type: ignore
                             if response == Acknowledgement.stop:
                                 await subscriber.on_completed()
+                                tg.cancel_scope.cancel()
                                 break
                         except anyio.WouldBlock:
                             # No new elements, keep waiting
