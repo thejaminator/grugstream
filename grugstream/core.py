@@ -253,9 +253,9 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def flatten_optional(self: 'Observable[A_co | None]') -> 'Observable[A_co]':
-        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
-            async def on_next(value: A_co | None) -> Acknowledgement:
+    def flatten_optional(self: 'Observable[A | None]') -> 'Observable[A]':
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            async def on_next(value: A | None) -> Acknowledgement:
                 if value is not None:
                     return await subscriber.on_next(value)
                 return Acknowledgement.ok
