@@ -2,6 +2,7 @@ import datetime
 from abc import ABC, abstractmethod
 from collections import deque
 from enum import Enum
+from pathlib import Path
 from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence, Hashable
 
 import anyio
@@ -67,6 +68,15 @@ class Observable(ABC, Generic[A_co]):
                 await subscriber.on_completed()
 
         return AsyncIterableObservable()
+
+    @staticmethod
+    def from_file(file_path: Path) -> "Observable[str]":
+        async def async_iterator() -> AsyncIterable[str]:
+            async with await anyio.open_file(file_path) as f:
+                async for line in f:
+                    yield line
+
+        return Observable.from_async_iterable(async_iterator())
 
     @staticmethod
     def from_interval(seconds: float) -> 'Observable[int]':
@@ -396,6 +406,16 @@ class Observable(ABC, Generic[A_co]):
                         yield item
                     processing_limit.release_on_behalf_of(item)
 
+    async def to_file(self: "Observable[str]", file_path: Path, mode: str = 'a') -> None:
+        async def on_next(value: A_co) -> Acknowledgement:
+            async with await anyio.open_file(file_path, mode=mode) as file:
+                await file.write(value + '\n')
+            return Acknowledgement.ok
+
+        file_subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(file_subscriber)
+
     async def reduce(self, func: Callable[[A, A], A], initial: A) -> A:
         result = initial
 
@@ -596,7 +616,6 @@ async def main():
         .to_async_iterable()
     )
 
-    print("hre")
     async for item in stream:
         print(item)
 
