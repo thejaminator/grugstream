@@ -305,6 +305,47 @@ class Observable(ABC, Generic[A_co]):
 
         return result
 
+    async def to_async_iterable(self) -> AsyncIterable[A_co]:
+        items = []
+        event = anyio.Event()
+        processing_limit = anyio.CapacityLimiter(1)
+
+        class BufferingSubscriber(Subscriber[A_co]):
+            async def on_next(self, value: A_co) -> Acknowledgement:
+                await processing_limit.acquire_on_behalf_of(value)
+                items.append(value)
+                return Acknowledgement.ok
+
+            async def on_error(self, error: Exception) -> None:
+                items.append(error)
+                event.set()
+
+            async def on_completed(self) -> None:
+                event.set()
+
+        buffering_subscriber = BufferingSubscriber()
+        async with anyio.create_task_group() as task_group:
+
+            async def run_subscription():
+                try:
+                    await self.subscribe(buffering_subscriber)
+                finally:
+                    event.set()
+
+            task_group.start_soon(run_subscription)
+
+            while not event.is_set() or items:
+                await anyio.sleep(0)
+
+                while items:
+                    item = items.pop(0)
+                    if isinstance(item, Exception):
+                        raise item
+                    else:
+                        yield item
+                    processing_limit.release_on_behalf_of(item)
+
+
     async def reduce(self, func: Callable[[A, A], A], initial: A) -> A:
         result = initial
 
@@ -472,15 +513,17 @@ async def mock_api_call_2(item: str) -> str:
 
 async def main():
     # my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
-    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3])
+    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3,4])
     stream = (
         my_observable.map(lambda x: x * 2)
         .map(lambda x: f"Number {x}")
         .map_async_par(mock_api_call, max_par=3)
-        .print()
-        .to_list()
+        .to_async_iterable()
     )
-    done = await stream
+
+    print("hre")
+    async for item in stream:
+        print(item)
 
 
 if __name__ == "__main__":
