@@ -1,6 +1,5 @@
 import random
 from pathlib import Path
-from typing import List
 
 import anyio
 from anyio import open_file
@@ -54,9 +53,9 @@ async def handle_stage_two_a(stage_one_output: TaskOutput) -> Stage2aTaskOutput:
     task_output = TaskOutput(task_spec=stage_one_output.task_spec, inference_output=inference_output)
     return Stage2aTaskOutput(
         stage_one_output=stage_one_output,
-
         stage_2_a_output=task_output,
     )
+
 
 async def handle_stage_two_b(task_spec: Stage2aTaskOutput) -> Stage2bTaskOutput:
     inference_output = await mock_openai_call("Stage two b:" + task_spec.stage_2_a_output.inference_output)
@@ -66,6 +65,7 @@ async def handle_stage_two_b(task_spec: Stage2aTaskOutput) -> Stage2bTaskOutput:
         stage_2_a_output=task_spec.stage_2_a_output,
         stage_2_b_output=task_output,
     )
+
 
 async def handle_stage_two_c(task_spec: Stage2bTaskOutput) -> Stage2cTaskOutput:
     inference_output = await mock_openai_call("Stage two c:" + task_spec.stage_2_b_output.inference_output)

@@ -1,6 +1,7 @@
 import datetime
 from pathlib import Path
 
+import anyio
 import pytest
 
 from grubstream.core import (
@@ -26,6 +27,99 @@ async def test_throttle():
 
 
 @pytest.mark.asyncio
+async def test_map():
+    observable = Observable.from_iterable([1, 2, 3])
+    mapped = observable.map(lambda x: x * 2)
+    items = await mapped.to_list()
+    assert items == [2, 4, 6]
+
+
+@pytest.mark.asyncio
+async def test_map_async():
+    async def multiply_by_two(x):
+        await anyio.sleep(0.1)
+        return x * 2
+
+    observable = Observable.from_iterable([1, 2, 3])
+    mapped = observable.map_async(multiply_by_two)
+    items = await mapped.to_list()
+    assert items == [2, 4, 6]
+
+
+@pytest.mark.asyncio
+async def test_filter():
+    observable = Observable.from_iterable([1, 2, 3, 4, 5])
+    filtered = observable.filter(lambda x: x % 2 == 0)
+    items = await filtered.to_list()
+    assert items == [2, 4]
+
+
+@pytest.mark.asyncio
+async def test_take():
+    observable = Observable.from_iterable([1, 2, 3, 4, 5])
+    taken = observable.take(3)
+    items = await taken.to_list()
+    assert items == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_distinct():
+    observable = Observable.from_iterable([1, 2, 2, 3, 4, 4, 4])
+    distinct = observable.distinct()
+    items = await distinct.to_list()
+    assert items == [1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_first():
+    observable = Observable.from_iterable([1, 2, 3])
+    first_item = await observable.first()
+    assert first_item == 1
+
+
+@pytest.mark.asyncio
+async def test_flatten_iterable():
+    observable = Observable.from_iterable([[1, 2], [3, 4], [5]])
+    flattened = observable.flatten_iterable()
+    items = await flattened.to_list()
+    assert items == [1, 2, 3, 4, 5]
+
+
+@pytest.mark.asyncio
+async def test_flatten_async_iterable():
+    async def async_gen(items):
+        for item in items:
+            yield item
+
+    observable = Observable.from_iterable([async_gen([1, 2]), async_gen([3, 4])])
+    flattened = observable.flatten_async_iterable()
+    items = await flattened.to_list()
+    assert items == [1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_flatten_optional():
+    observable = Observable.from_iterable([1, None, 2, 3, None])
+    flattened = observable.flatten_optional()
+    items = await flattened.to_list()
+    assert items == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_reduce():
+    observable = Observable.from_iterable([1, 2, 3, 4, 5])
+    result = await observable.reduce(lambda acc, x: acc + x, 0)
+    assert result == 15
+
+
+@pytest.mark.asyncio
+async def test_sum():
+    observable = Observable.from_iterable([1, 2, 3, 4, 5])
+    result = await observable.sum()
+    assert result == 15
+
+
+@pytest.mark.asyncio
 async def test_from_file(tmp_path: Path):
     # Create a test file
     file_path = tmp_path / "testfile.txt"
@@ -39,6 +133,7 @@ async def test_from_file(tmp_path: Path):
 
     expected_output = ["line1\n", "line2\n", "line3\n"]
     assert items == expected_output
+
 
 @pytest.mark.asyncio
 async def test_to_file(tmp_path: Path):
