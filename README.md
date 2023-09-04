@@ -16,7 +16,13 @@ Also - everything is statically typed!
 ## Getting Started
 
 ### Basic Example
-
+Generally - what we always do is
+1. Create an observable
+2. Transform it with operators
+3. Run (subscribe) to it. 
+   - For example, `to_list` will run the observable and collect the results into a list.
+   - `run_to_completion` will run the observable until it completes
+   - `to_file` will run the observable and write the results to a file
 ```python
 import anyio
 from grugstream import Observable
@@ -47,7 +53,7 @@ async def main():
 anyio.run(main)
 ```
 
-### Parallel Example
+### Map operators - Parallel Example
 
 Running things in parallel is as simple as calling `map_async_par` instead of `map_async`:
 
@@ -87,11 +93,12 @@ anyio.run(main)
 
 ```python
 import random
+from pathlib import Path
+from typing import List, Optional
 
 import anyio
+
 from grugstream import Observable
-from typing import List, Optional
-from pathlib import Path
 
 
 # Mock async function simulating an HTTP call to Google
@@ -116,17 +123,16 @@ async def mock_api_call_that_returns_optional(item: str) -> Optional[str]:
 async def main():
     observable = (
         Observable.from_repeat("query", 0.1)
-        .throttle(0.5)  # don't spam google too much!
-        .map_async(lambda item: mock_http_call_to_google(item))
-        .map_async(lambda item: mock_api_call_that_returns_list(item))
+        .map_async_par(lambda item: mock_http_call_to_google(item))
+        .map_async_par(lambda item: mock_api_call_that_returns_list(item))
         .flatten_iterable()  # Flatten the list into individual items
-        .map_async(lambda item: mock_api_call_that_returns_optional(item))
+        .map_async_par(lambda item: mock_api_call_that_returns_optional(item))
         .print()
         .flatten_optional()  # Remove None values
     )
 
     # Write the results to a file
-    await observable.take(20).to_file(Path("results.txt"))
+    await observable.take(100).to_file(Path("results.txt"))
 
 
 anyio.run(main)
@@ -166,7 +172,7 @@ anyio.run(main)
 ```
 
 
-## Side effects
+## for_each operator - side effects
 Sometimes you want to do something with the elements of the stream, but you don't want to change the stream itself.
 For example, you might want to write some intermediate items to a file.
 

@@ -1,11 +1,10 @@
 import random
+from pathlib import Path
+from typing import List, Optional
 
 import anyio
-from tqdm import tqdm
 
 from grugstream import Observable
-from typing import List, Optional
-from pathlib import Path
 
 
 # Mock async function simulating an HTTP call to Google
@@ -30,17 +29,16 @@ async def mock_api_call_that_returns_optional(item: str) -> Optional[str]:
 async def main():
     observable = (
         Observable.from_repeat("query", 0.1)
-        .throttle(0.5)  # don't spam google too much!
-        .map_async(lambda item: mock_http_call_to_google(item))
-        .map_async(lambda item: mock_api_call_that_returns_list(item))
+        .map_async_par(lambda item: mock_http_call_to_google(item))
+        .map_async_par(lambda item: mock_api_call_that_returns_list(item))
         .flatten_iterable()  # Flatten the list into individual items
-        .map_async(lambda item: mock_api_call_that_returns_optional(item))
-        .tqdm(tqdm_bar=tqdm(total=100, desc="Google observable"))  # Show a progress bar
+        .map_async_par(lambda item: mock_api_call_that_returns_optional(item))
+        .print()
         .flatten_optional()  # Remove None values
     )
 
     # Write the results to a file
-    await observable.take(1).to_file(Path("results.txt"))
+    await observable.take(100).to_file(Path("results.txt"))
 
 
 anyio.run(main)
