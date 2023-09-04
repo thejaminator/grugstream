@@ -1,5 +1,6 @@
 import datetime
 from pathlib import Path
+from typing import AsyncIterable, Iterable
 
 import anyio
 import pytest
@@ -36,7 +37,7 @@ async def test_map():
 
 @pytest.mark.asyncio
 async def test_map_async():
-    async def multiply_by_two(x):
+    async def multiply_by_two(x: int) -> int:
         await anyio.sleep(0.1)
         return x * 2
 
@@ -87,7 +88,7 @@ async def test_flatten_iterable():
 
 @pytest.mark.asyncio
 async def test_flatten_async_iterable():
-    async def async_gen(items):
+    async def async_gen(items: Iterable[int]) -> AsyncIterable[int]:
         for item in items:
             yield item
 

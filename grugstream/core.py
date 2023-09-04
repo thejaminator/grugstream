@@ -2,12 +2,17 @@ from abc import ABC, abstractmethod
 from collections import deque
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence, Hashable
+from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence, Hashable, TYPE_CHECKING
 
 import anyio
 from anyio import run, create_task_group, create_memory_object_stream, EndOfStream
 from anyio.abc import TaskGroup
 from slist import Slist
+
+if TYPE_CHECKING:
+    from _typeshed import OpenTextMode
+else:
+    OpenTextMode = str
 
 
 class Acknowledgement(str, Enum):
@@ -285,10 +290,10 @@ class Observable(ABC, Generic[A_co]):
 
     def throttle(self, seconds: float, max_buffer_size: int = 1) -> 'Observable[A_co]':
         source = self
-        send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
+        send_stream, receive_stream = create_memory_object_stream[A](max_buffer_size=max_buffer_size)  # type: ignore
 
-        class ThrottledObservable(Observable[A_co]):
-            async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+        class ThrottledObservable(Observable[A]):
+            async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 async def wait_and_forward() -> None:
                     async with create_task_group() as tg:
                         # Producer task
@@ -302,7 +307,7 @@ class Observable(ABC, Generic[A_co]):
                         await anyio.sleep(seconds)
                         try:
                             value = receive_stream.receive_nowait()
-                            response = await subscriber.on_next(value)
+                            response = await subscriber.on_next(value)  # type: ignore
                             if response == Acknowledgement.stop:
                                 await subscriber.on_completed()
                                 break
@@ -313,7 +318,7 @@ class Observable(ABC, Generic[A_co]):
                             await subscriber.on_completed()
                             break
 
-                async def on_next(value: A_co) -> Acknowledgement:
+                async def on_next(value: A) -> Acknowledgement:
                     await send_stream.send(value)
                     return Acknowledgement.ok
 
@@ -370,8 +375,8 @@ class Observable(ABC, Generic[A_co]):
         event = anyio.Event()
         processing_limit = anyio.CapacityLimiter(1)
 
-        class BufferingSubscriber(Subscriber[A_co]):
-            async def on_next(self, value: A_co) -> Acknowledgement:
+        class BufferingSubscriber(Subscriber[A]):
+            async def on_next(self, value: A) -> Acknowledgement:
                 await processing_limit.acquire_on_behalf_of(value)
                 items.append(value)
                 return Acknowledgement.ok
@@ -405,8 +410,8 @@ class Observable(ABC, Generic[A_co]):
                         yield item
                     processing_limit.release_on_behalf_of(item)
 
-    async def to_file(self: "Observable[str]", file_path: Path, mode: str = 'a') -> None:
-        async def on_next(value: A_co) -> Acknowledgement:
+    async def to_file(self: "Observable[str]", file_path: Path, mode: OpenTextMode = 'a') -> None:
+        async def on_next(value: str) -> Acknowledgement:
             async with await anyio.open_file(file_path, mode=mode) as file:
                 await file.write(value + '\n')
             return Acknowledgement.ok

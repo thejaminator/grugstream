@@ -6,7 +6,7 @@ from anyio import open_file
 from pydantic import BaseModel
 from slist import Slist
 
-from grubstream.core import Observable
+from grugstream.core import Observable
 
 
 async def mock_openai_call(prompt: str) -> str:
