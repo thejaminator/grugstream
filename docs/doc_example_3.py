@@ -1,6 +1,8 @@
 import random
 
 import anyio
+from tqdm import tqdm
+
 from grugstream import Observable
 from typing import List, Optional
 from pathlib import Path
@@ -33,7 +35,7 @@ async def main():
         .map_async(lambda item: mock_api_call_that_returns_list(item))
         .flatten_iterable()  # Flatten the list into individual items
         .map_async(lambda item: mock_api_call_that_returns_optional(item))
-        .print()
+        .tqdm(tqdm_bar=tqdm(total=100, desc="Google observable"))  # Show a progress bar
         .flatten_optional()  # Remove None values
     )
 

@@ -14,6 +14,7 @@ from typing import (
     TYPE_CHECKING,
     Protocol,
     Optional,
+    Any,
 )
 
 import anyio
@@ -368,11 +369,11 @@ class Observable(ABC, Generic[A_co]):
     ) -> "Observable[A_co]":
         return self.for_each(lambda x: printer(f"{prefix}{x}"))  # type: ignore
 
-    def tqdm(self, n: int) -> 'Observable[A_co]':
+    def tqdm(self, tqdm_bar: Optional[Any]) -> 'Observable[A_co]':
         """
         Wrap the observable with a tqdm progress bar.
 
-        :param n: Total number of items.
+        :param n: Number of items to expect. If None, we won't log it to tqdm
         :return: Observable with tqdm logging.
         """
         source = self
@@ -384,7 +385,7 @@ class Observable(ABC, Generic[A_co]):
 
         class TQDMObservable(Observable[A]):
             async def subscribe(self, subscriber) -> None:
-                pbar = tqdm(total=n, dynamic_ncols=True)
+                pbar: tqdm = tqdm(dynamic_ncols=True) if tqdm_bar is None else tqdm_bar
 
                 async def on_next(value: A) -> Acknowledgement:
                     pbar.update(1)
