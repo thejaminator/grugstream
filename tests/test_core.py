@@ -151,3 +151,17 @@ async def test_to_file(tmp_path: Path):
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
     assert file_contents == test_data
+
+
+@pytest.mark.asyncio
+async def test_run_until_timeout():
+    # Create an observable that emits items every 0.1 seconds
+    observable = Observable.from_repeat("item", 0.1)
+
+    # Create a list to store received items
+    received_items = []
+    await observable.for_each(lambda item: received_items.append(item)).run_until_timeout(3)
+
+    # Check the number of received items. It should be close to 30 (= 3 seconds / 0.1 seconds per item)
+    # Allowing some leeway for processing time
+    assert 25 <= len(received_items) <= 35

@@ -2,12 +2,26 @@ from abc import ABC, abstractmethod
 from collections import deque
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Awaitable, TypeVar, Generic, AsyncIterable, Iterable, Sequence, Hashable, TYPE_CHECKING
+from typing import (
+    Callable,
+    Awaitable,
+    TypeVar,
+    Generic,
+    AsyncIterable,
+    Iterable,
+    Sequence,
+    Hashable,
+    TYPE_CHECKING,
+    Protocol,
+    Optional,
+)
 
 import anyio
 from anyio import run, create_task_group, create_memory_object_stream, EndOfStream
 from anyio.abc import TaskGroup
 from slist import Slist
+
+from grugstream.exceptions import GrugSumError
 
 if TYPE_CHECKING:
     from _typeshed import OpenTextMode
@@ -25,9 +39,17 @@ B = TypeVar("B")
 B_co = TypeVar("B_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
 
-A = TypeVar('A')  # New type variable, without covariance
+A = TypeVar('A')
 
 CanHash = TypeVar("CanHash", bound=Hashable)
+
+
+class Addable(Protocol):
+    def __add__(self: A, other: A, /) -> A:
+        ...
+
+
+CanAdd = TypeVar("CanAdd", bound=Addable)
 
 
 def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
@@ -43,6 +65,9 @@ class Observable(ABC, Generic[A_co]):
 
     def from_one(self, value: A) -> "Observable[A]":
         return self.from_iterable([value])
+
+    def from_empty(self) -> "Observable[A]":  # type: ignore
+        return self.from_iterable([])
 
     def from_one_option(self, value: A | None) -> "Observable[A]":
         return self.from_iterable([value]) if value is not None else self.from_iterable([])
@@ -343,6 +368,42 @@ class Observable(ABC, Generic[A_co]):
     ) -> "Observable[A_co]":
         return self.for_each(lambda x: printer(f"{prefix}{x}"))  # type: ignore
 
+    def tqdm(self, n: int) -> 'Observable[A_co]':
+        """
+        Wrap the observable with a tqdm progress bar.
+
+        :param n: Total number of items.
+        :return: Observable with tqdm logging.
+        """
+        source = self
+
+        try:
+            from tqdm import tqdm
+        except ImportError:
+            raise ImportError("You need to install tqdm to use this function.")
+
+        class TQDMObservable(Observable[A]):
+            async def subscribe(self, subscriber) -> None:
+                pbar = tqdm(total=n, dynamic_ncols=True)
+
+                async def on_next(value: A) -> Acknowledgement:
+                    pbar.update(1)
+                    return await subscriber.on_next(value)
+
+                async def on_completed() -> None:
+                    pbar.close()
+                    await subscriber.on_completed()
+
+                async def on_error(e: Exception) -> None:
+                    pbar.close()
+                    await subscriber.on_error(e)
+
+                wrapped_subscriber = create_subscriber(on_next=on_next, on_completed=on_completed, on_error=on_error)
+
+                await source.subscribe(wrapped_subscriber)
+
+        return TQDMObservable()
+
     async def to_list(self) -> list[A_co]:
         result = []
 
@@ -438,6 +499,28 @@ class Observable(ABC, Generic[A_co]):
     async def sum(self: 'Observable[int | float]') -> int | float:
         return await self.reduce(lambda a, b: a + b, 0)
 
+    async def sum_option(self: "Observable[CanAdd]") -> Optional[CanAdd]:
+        """Sums with addition. Returns None if the observable is empty"""
+        result = None
+
+        async def on_next(value: CanAdd) -> Acknowledgement:
+            nonlocal result
+            result = value if result is None else result + value
+            return Acknowledgement.ok
+
+        reduce_subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(reduce_subscriber)
+
+        return result
+
+    async def sum_or_raise(self: "Observable[CanAdd]") -> CanAdd:
+        """Folds left with addition. Raises if the list is empty"""
+        result = await self.sum_option()
+        if result is None:
+            raise GrugSumError("Cannot sum an empty observable")
+        return result
+
     def take(self, n: int) -> 'Observable[A_co]':
         source = self
 
@@ -493,6 +576,34 @@ class Observable(ABC, Generic[A_co]):
 
     async def run_to_completion(self) -> None:
         await self.subscribe(RunToCompletionSubscriber)
+
+    async def run_until_timeout(self, seconds: float) -> None:
+        """
+        Run the observable until a specified timeout (in seconds).
+
+        :param seconds: Time duration to run the observable.
+        """
+
+        class AnonymousSubscriber(Subscriber[T_contra]):  # type: ignore
+            async def on_next(self, value: T_contra) -> Acknowledgement:
+                return Acknowledgement.ok
+
+            async def on_error(self, error: Exception) -> None:
+                task_group.cancel_scope.cancel()
+
+            async def on_completed(self) -> None:
+                task_group.cancel_scope.cancel()
+
+        subscriber = AnonymousSubscriber()
+
+        async def timeout_task():
+            await anyio.sleep(seconds)
+            task_group.cancel_scope.cancel()
+
+        async with create_task_group() as tg:
+            task_group = tg  # Set the task_group so we can cancel it in other methods
+            tg.start_soon(self.subscribe, subscriber)
+            tg.start_soon(timeout_task)
 
 
 class Subscriber(Generic[T_contra]):

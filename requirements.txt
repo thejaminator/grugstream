@@ -6,3 +6,4 @@ anyio
 slist
 pydantic
 pytest-asyncio
+tqdm
