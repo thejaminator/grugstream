@@ -1,0 +1,36 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.0.1
+  hooks:
+    - id: no-commit-to-branch
+      args: ['--branch=main']
+      stages:
+        - commit
+
+- repo: local
+  hooks:
+    - id: black
+      name: black
+      entry: black
+      language: system
+      require_serial: true
+      types: [python]
+      stages:
+        - commit
+
+
+    - id: ruff
+      name: ruff
+      entry: ruff --fix
+      language: system
+      types: [python]
+      stages:
+        - commit
+
+    - id: pyright
+      name: pyright
+      entry: pyright
+      language: system
+      types: [python]
+      stages:
+        - commit
