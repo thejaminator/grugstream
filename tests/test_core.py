@@ -5,7 +5,7 @@ from typing import AsyncIterable, Iterable
 import anyio
 import pytest
 from anyio import create_memory_object_stream, create_task_group
-from anyio.streams.memory import MemoryObjectReceiveStream
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
 from grugstream.core import (
     Observable,
@@ -206,4 +206,22 @@ async def test_from_receive_stream():
         async with send_stream:
             for num in range(10):
                 await send_stream.send(f'number {num}')
+    assert len(collected) == 5
+
+
+@pytest.mark.asyncio
+async def test_for_each_to_stream():
+    async def process_items(send_stream: MemoryObjectSendStream[str]) -> None:
+        async with send_stream:
+            obs: Observable[str] = Observable.from_repeat("a", seconds=0.01)
+            await obs.take(5).for_each_to_stream(send_stream).run_to_completion()
+
+    send_stream, receive_stream = create_memory_object_stream[str](max_buffer_size=1000)
+    collected = []
+    async with create_task_group() as tg:
+        tg.start_soon(process_items, send_stream)
+        async with receive_stream:
+            async for item in receive_stream:
+                collected.append(item)
+
     assert len(collected) == 5

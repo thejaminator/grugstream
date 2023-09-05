@@ -19,7 +19,7 @@ from typing import (
 import anyio
 from anyio import create_task_group, create_memory_object_stream, EndOfStream
 from anyio.abc import TaskGroup
-from anyio.streams.memory import MemoryObjectReceiveStream
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from slist import Slist
 
 from grugstream.acknowledgement import Acknowledgement
@@ -226,6 +226,12 @@ class Observable(ABC, Generic[A_co]):
             return value
 
         return self.map(append_to_list)
+
+    def for_each_to_stream(self, stream: MemoryObjectSendStream[A_co]) -> "Observable[A_co]":
+        async def send(value: A_co) -> A_co:
+            await stream.send(value)
+            return value
+        return self.map_async(send)
 
     def for_each_to_file(
         self,
