@@ -145,6 +145,27 @@ class Observable(ABC, Generic[A_co]):
         """Subscribe async subscriber."""
         pass
 
+    def enumerated(self) -> "Observable[tuple[int, A_co]]":
+        source = self
+
+        async def subscribe(subscriber: Subscriber[tuple[int, A_co]]) -> None:
+            counter = 0
+
+            async def on_next(value: A_co) -> Acknowledgement:
+                nonlocal counter
+                idx = counter
+                transformed_value = (idx, value)
+                counter = counter + 1
+                return await subscriber.on_next(transformed_value)
+
+            map_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await source.subscribe(map_subscriber)
+
+        return create_observable(subscribe)
+
     def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
         source = self
 
@@ -160,6 +181,9 @@ class Observable(ABC, Generic[A_co]):
             await source.subscribe(map_subscriber)
 
         return create_observable(subscribe)
+
+    def map_enumerated(self, func: Callable[[int, A_co], B_co]) -> "Observable[B_co]":
+        return self.enumerated().map_2(func)
 
     def map_2(self: "Observable[tuple[A, B]]", func: Callable[[A, B], C]) -> "Observable[C]":
         return self.map(lambda x: func(x[0], x[1]))
@@ -232,6 +256,12 @@ class Observable(ABC, Generic[A_co]):
             return value
 
         return self.map(return_original)
+
+    def for_each_enumerated(self, func: Callable[[int, A_co], None]) -> "Observable[A_co]":
+        def return_original(idx: int, value: A_co) -> A_co:
+            func(idx, value)
+            return value
+        return self.enumerated().map_2(return_original)
 
     def for_each_to_list(self, collect_list: list[A_co]) -> "Observable[A_co]":
         def append_to_list(value: A_co) -> A_co:

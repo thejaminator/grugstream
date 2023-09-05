@@ -58,6 +58,18 @@ async def test_filter():
 
 
 @pytest.mark.asyncio
+async def test_enumerated():
+    observable = Observable.from_iterable(["test"] * 5)
+    assert await observable.enumerated().to_list() == [
+        (0, "test"),
+        (1, "test"),
+        (2, "test"),
+        (3, "test"),
+        (4, "test"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_take():
     observable = Observable.from_iterable([1, 2, 3, 4, 5])
     taken = observable.take(3)
