@@ -1,5 +1,6 @@
 import random
 from pathlib import Path
+from typing import TypeVar, Generic, Type, Callable, Hashable
 
 import anyio
 from anyio import open_file
@@ -81,6 +82,42 @@ async def handle_stage_two_c(task_spec: Stage2bTaskOutput) -> Stage2cTaskOutput:
 
 def load_task_specs() -> list[TaskSpec]:
     return [TaskSpec(prompt=f"I'm a prompt {i}", task_hash=str(i)) for i in range(10)]
+
+
+GenericBaseModel = TypeVar('GenericBaseModel', bound=BaseModel)
+
+
+class GenericCache(Generic[GenericBaseModel]):
+    def __init__(
+        self,
+        item_type: Type[GenericBaseModel],
+        # in reality this could also just be a protocol to read the correct file_path to write to
+        file_path_func: Callable[[GenericBaseModel], Path],
+        # hash func should be unique for each file path
+        hash_func: Callable[[GenericBaseModel], str],
+        # items loaded in the cache
+        items: dict[Path, dict[str, GenericBaseModel]],
+    ):
+        self.item_type = item_type
+        self.file_path_func = file_path_func
+        self.hash_func = hash_func
+        self.items = items
+
+    def item_in_cache(self, item: GenericBaseModel) -> bool:
+        _hash = self.hash_func(item)
+        path = self.file_path_func(item)
+        if path in self.items:
+            return _hash in self.items[path]
+        return False
+
+    async def async_write_to_path(self) -> None:
+        # TODO
+        ...
+
+    async def update_cache(self) -> None:
+        # TODO
+        ...
+
 
 
 class StageOneCache:
