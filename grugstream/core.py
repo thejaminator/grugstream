@@ -146,7 +146,20 @@ class Observable(ABC, Generic[A_co]):
         pass
 
     def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
-        return MappedObservable(source=self, func=func)
+        source = self
+
+        async def subscribe(subscriber: Subscriber[B_co]) -> None:
+            async def on_next(value: A_co) -> Acknowledgement:
+                transformed_value = func(value)
+                return await subscriber.on_next(transformed_value)
+
+            map_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
+
+            await source.subscribe(map_subscriber)
+
+        return create_observable(subscribe)
 
     def map_2(self: "Observable[tuple[A, B]]", func: Callable[[A, B], C]) -> "Observable[C]":
         return self.map(lambda x: func(x[0], x[1]))
@@ -231,6 +244,7 @@ class Observable(ABC, Generic[A_co]):
         async def send(value: A_co) -> A_co:
             await stream.send(value)
             return value
+
         return self.map_async(send)
 
     def for_each_to_file(
@@ -711,23 +725,6 @@ class Observable(ABC, Generic[A_co]):
             tg.start_soon(timeout_task)
 
         return count
-
-
-class MappedObservable(Observable[B]):
-    def __init__(self, source: Observable[A_co], func: Callable[[A_co], B]):
-        self.source = source
-        self.func = func
-
-    async def subscribe(self, subscriber: Subscriber[B]) -> None:
-        async def on_next(value: A_co) -> Acknowledgement:  # type: ignore
-            transformed_value = self.func(value)  # type: ignore
-            return await subscriber.on_next(transformed_value)
-
-        map_subscriber: Subscriber[A_co] = create_subscriber(  # type: ignore
-            on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
-        )
-
-        await self.source.subscribe(map_subscriber)
 
 
 class FilteredObservable(Observable[A_co]):
