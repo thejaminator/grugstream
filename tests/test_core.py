@@ -225,3 +225,34 @@ async def test_for_each_to_stream():
                 collected.append(item)
 
     assert len(collected) == 5
+
+
+@pytest.mark.asyncio
+async def test_receive_and_send_streams():
+    collected = []
+
+    async def process_items(
+        receive_stream: MemoryObjectReceiveStream[int], send_stream: MemoryObjectSendStream[int]
+    ) -> None:
+        async with send_stream:
+            obs: Observable[int] = Observable.from_receive_stream(receive_stream)
+            # send it back
+            await (
+                # add 1 to demonstrate some processing
+                obs.map(lambda x: x + 1)
+                .for_each_to_stream(send_stream)
+                .take(5)
+                .for_each_to_list(collect_list=collected)
+                .run_to_completion()
+            )
+
+    send_stream, receive_stream = create_memory_object_stream[int](max_buffer_size=1000)
+    async with create_task_group() as tg:
+        # clone the send stream since we need it for process_items
+        cloned_send = send_stream.clone()
+        tg.start_soon(process_items, receive_stream, cloned_send)
+        async with send_stream:
+            # only send 1, but because the observable sends it back to the same stream we should collect 5 items
+            await send_stream.send(0)
+    assert len(collected) == 5
+    assert collected == [1, 2, 3, 4, 5]
