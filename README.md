@@ -90,7 +90,11 @@ anyio.run(main)
 ```
 
 ## Chaining other api calls
-
+Suppose you have multiple api calls to run.
+You  want all the api calls to be run in parallel with each other - 
+the items doing the 2nd api call don't need to wait for all the items for the 1st api call to complete.
+And maybe you want to stream to a file while it completes.
+Thats when streaming really shines.
 ```python
 import random
 from pathlib import Path
