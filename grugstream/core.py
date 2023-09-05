@@ -36,11 +36,12 @@ class Acknowledgement(str, Enum):
 
 
 A_co = TypeVar("A_co", covariant=True)
+A = TypeVar('A')
 B = TypeVar("B")
+C = TypeVar("C")
 B_co = TypeVar("B_co", covariant=True)
 T_contra = TypeVar("T_contra", contravariant=True)
 
-A = TypeVar('A')
 
 CanHash = TypeVar("CanHash", bound=Hashable)
 
@@ -144,6 +145,9 @@ class Observable(ABC, Generic[A_co]):
     def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
         return MappedObservable(source=self, func=func)
 
+    def map_2(self: "Observable[tuple[A, B]]", func: Callable[[A, B], C]) -> "Observable[C]":
+        return self.map(lambda x: func(x[0], x[1]))
+
     def map_async(self, func: Callable[[A_co], Awaitable[B_co]]) -> 'Observable[B_co]':
         source = self
 
@@ -159,6 +163,9 @@ class Observable(ABC, Generic[A_co]):
             await source.subscribe(map_subscriber)
 
         return create_observable(subscribe_async)
+
+    def map_2_async(self: "Observable[tuple[A, B]]", func: Callable[[A, B], Awaitable[C]]) -> "Observable[C]":
+        return self.map_async(lambda x: func(x[0], x[1]))
 
     def map_async_par(
         self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
@@ -210,17 +217,21 @@ class Observable(ABC, Generic[A_co]):
 
         return self.map(return_original)
 
-    def for_each_to_list(self, collect_list: list[A]) -> "Observable[A]":
-        def append_to_list(value: A) -> A:
+    def for_each_to_list(self, collect_list: list[A_co]) -> "Observable[A_co]":
+        def append_to_list(value: A_co) -> A_co:
             collect_list.append(value)
             return value
 
         return self.map(append_to_list)
 
     def for_each_to_file(
-        self, file_path: Path, mode: OpenTextMode = 'a', serialize: Callable[[A], str] = str, write_newline: bool = True
-    ) -> "Observable[A]":
-        async def append_to_file(value: A) -> None:
+        self,
+        file_path: Path,
+        mode: OpenTextMode = 'a',
+        serialize: Callable[[A_co], str] = str,
+        write_newline: bool = True,
+    ) -> "Observable[A_co]":
+        async def append_to_file(value: A_co) -> None:
             async with await anyio.open_file(file_path, mode=mode) as file:
                 await file.write(serialize(value) + ('\n' if write_newline else ''))
 
@@ -401,7 +412,7 @@ class Observable(ABC, Generic[A_co]):
 
         class TQDMObservable(Observable[A]):
             async def subscribe(self, subscriber) -> None:
-                pbar: tqdm = tqdm(dynamic_ncols=True) if tqdm_bar is None else tqdm_bar
+                pbar: tqdm = tqdm(dynamic_ncols=True) if tqdm_bar is None else tqdm_bar  # type: ignore
 
                 async def on_next(value: A) -> Acknowledgement:
                     pbar.update(1)
@@ -490,11 +501,15 @@ class Observable(ABC, Generic[A_co]):
                     processing_limit.release_on_behalf_of(item)
 
     async def to_file(
-        self, file_path: Path, mode: OpenTextMode = 'a', serialize: Callable[[A], str] = str, write_newline: bool = True
+        self,
+        file_path: Path,
+        mode: OpenTextMode = 'a',
+        serialize: Callable[[A_co], str] = str,
+        write_newline: bool = True,
     ) -> None:
-        async def on_next(value: str) -> Acknowledgement:
+        async def on_next(value: A_co) -> Acknowledgement:
             async with await anyio.open_file(file_path, mode=mode) as file:
-                await file.write(value + ('\n' if write_newline else ''))
+                await file.write(serialize(value) + ('\n' if write_newline else ''))
             return Acknowledgement.ok
 
         file_subscriber = create_subscriber(on_next=on_next)

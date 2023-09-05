@@ -1,8 +1,8 @@
-
-
 class GrugStreamException(Exception):
     """Base class for exceptions in this module."""
+
     pass
+
 
 class GrugSumError(GrugStreamException):
     """Exception raised for errors in the input.

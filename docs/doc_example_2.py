@@ -12,7 +12,7 @@ async def mock_http_call_to_google(item: str) -> str:
 async def main():
     # Create an observable, and call google for each item
     observable = (
-         # repeat every 0.1 seconds
+        # repeat every 0.1 seconds
         Observable.from_repeat("one", 0.1)
         # at any given time, there will be at most 50 concurrent calls to google
         .map_async_par(lambda item: mock_http_call_to_google(item), max_par=50)
