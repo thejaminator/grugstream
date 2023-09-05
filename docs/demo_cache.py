@@ -5,6 +5,7 @@ import anyio
 from anyio import open_file
 from pydantic import BaseModel
 from slist import Slist
+from tqdm import tqdm
 
 from grugstream.core import Observable
 
@@ -134,7 +135,7 @@ class StageOneCache:
 
 async def main():
     task_specs: list[TaskSpec] = load_task_specs()
-    stage_one_path = Path("stage_one.jsonl")
+    stage_one_path = Path("../stage_one.jsonl")
     stage_one_cache = StageOneCache.from_path(stage_one_path)
     await (
         Observable.from_iterable(task_specs)
@@ -145,6 +146,7 @@ async def main():
         .print()
         .map_async_par(handle_stage_two_a, max_par=10)
         .print()
+        .tqdm(tqdm_bar=tqdm(desc="Stage two a"))
         .map_async_par(handle_stage_two_b, max_par=10)
         .print()
         .to_list()

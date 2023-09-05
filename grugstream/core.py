@@ -28,8 +28,14 @@ from grugstream.subscriber import T_contra, Subscriber, create_subscriber
 
 if TYPE_CHECKING:
     from _typeshed import OpenTextMode
+
+    try:
+        from tqdm import tqdm
+    except ImportError:
+        tqdm = Any
 else:
     OpenTextMode = str
+    tqdm = Any
 
 A_co = TypeVar("A_co", covariant=True)
 A = TypeVar('A')
@@ -261,6 +267,7 @@ class Observable(ABC, Generic[A_co]):
         def return_original(idx: int, value: A_co) -> A_co:
             func(idx, value)
             return value
+
         return self.enumerated().map_2(return_original)
 
     def for_each_to_list(self, collect_list: list[A_co]) -> "Observable[A_co]":
@@ -449,7 +456,7 @@ class Observable(ABC, Generic[A_co]):
     ) -> "Observable[A_co]":
         return self.for_each(lambda x: printer(f"{prefix}{x}"))  # type: ignore
 
-    def tqdm(self, tqdm_bar: Optional[Any]) -> 'Observable[A_co]':
+    def tqdm(self, tqdm_bar: Optional[tqdm]) -> 'Observable[A_co]':
         """
         Wrap the observable with a tqdm progress bar.
 
@@ -465,7 +472,7 @@ class Observable(ABC, Generic[A_co]):
 
         class TQDMObservable(Observable[A]):
             async def subscribe(self, subscriber) -> None:
-                pbar: tqdm = tqdm(dynamic_ncols=True) if tqdm_bar is None else tqdm_bar  # type: ignore
+                pbar = tqdm(dynamic_ncols=True) if tqdm_bar is None else tqdm_bar  # type: ignore
 
                 async def on_next(value: A) -> Acknowledgement:
                     pbar.update(1)
