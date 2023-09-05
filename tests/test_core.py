@@ -7,7 +7,7 @@ import pytest
 
 from grugstream.core import (
     Observable,
-)  # replace 'your_module' with the actual module name
+)
 
 
 @pytest.mark.asyncio
@@ -160,8 +160,15 @@ async def test_run_until_timeout():
 
     # Create a list to store received items
     received_items = []
-    await observable.for_each(lambda item: received_items.append(item)).run_until_timeout(3)
+    result = await observable.for_each(lambda item: received_items.append(item)).run_until_timeout(3)
 
     # Check the number of received items. It should be close to 30 (= 3 seconds / 0.1 seconds per item)
     # Allowing some leeway for processing time
     assert 25 <= len(received_items) <= 35
+    assert result == len(received_items)
+
+
+@pytest.mark.asyncio
+async def test_run_to_completion():
+    result: int = await Observable.from_repeat("1", 0.01).take(10).run_to_completion()
+    assert result == 10

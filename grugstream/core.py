@@ -23,7 +23,6 @@ from slist import Slist
 
 from grugstream.acknowledgement import Acknowledgement
 from grugstream.exceptions import GrugSumError
-from grugstream.subscriber import RunToCompletionSubscriber
 
 from grugstream.subscriber import T_contra, R_co, Subscriber, create_subscriber
 
@@ -603,18 +602,36 @@ class Observable(ABC, Generic[A_co]):
         items = await self.take(1).to_list()
         return items[0]
 
-    async def run_to_completion(self) -> None:
-        await self.subscribe(RunToCompletionSubscriber)
+    async def run_to_completion(self) -> int:
+        """Runs the observable to completion, returning the number of
+        final items processed"""
+        count = 0
 
-    async def run_until_timeout(self, seconds: float) -> None:
+        async def on_next(value: A_co) -> Acknowledgement:
+            nonlocal count
+            count = count + 1
+            return Acknowledgement.ok
+
+        subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(subscriber)
+
+        return count
+
+    async def run_until_timeout(self, seconds: float) -> int:
         """
         Run the observable until a specified timeout (in seconds).
 
         :param seconds: Time duration to run the observable.
+
+        returns the number of final items processed
         """
+        count = 0
 
         class AnonymousSubscriber(Subscriber[T_contra]):  # type: ignore
             async def on_next(self, value: T_contra) -> Acknowledgement:
+                nonlocal count
+                count = count + 1
                 return Acknowledgement.ok
 
             async def on_error(self, error: Exception) -> None:
@@ -633,6 +650,8 @@ class Observable(ABC, Generic[A_co]):
             task_group = tg  # Set the task_group so we can cancel it in other methods
             tg.start_soon(self.subscribe, subscriber)
             tg.start_soon(timeout_task)
+
+        return count
 
 
 class MappedObservable(Observable[R_co]):
