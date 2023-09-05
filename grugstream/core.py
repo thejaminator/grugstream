@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from collections import deque
-from enum import Enum
 from pathlib import Path
 from typing import (
     Callable,
@@ -18,30 +17,26 @@ from typing import (
 )
 
 import anyio
-from anyio import run, create_task_group, create_memory_object_stream, EndOfStream
+from anyio import create_task_group, create_memory_object_stream, EndOfStream
 from anyio.abc import TaskGroup
 from slist import Slist
 
+from grugstream.acknowledgement import Acknowledgement
 from grugstream.exceptions import GrugSumError
+from grugstream.subscriber import RunToCompletionSubscriber
+
+from grugstream.subscriber import T_contra, R_co, Subscriber, create_subscriber
 
 if TYPE_CHECKING:
     from _typeshed import OpenTextMode
 else:
     OpenTextMode = str
 
-
-class Acknowledgement(str, Enum):
-    ok = "ok"
-    stop = "stop"
-
-
 A_co = TypeVar("A_co", covariant=True)
 A = TypeVar('A')
 B = TypeVar("B")
 C = TypeVar("C")
 B_co = TypeVar("B_co", covariant=True)
-T_contra = TypeVar("T_contra", contravariant=True)
-
 
 CanHash = TypeVar("CanHash", bound=Hashable)
 
@@ -640,55 +635,21 @@ class Observable(ABC, Generic[A_co]):
             tg.start_soon(timeout_task)
 
 
-class Subscriber(Generic[T_contra]):
-    """Base class for Subscriber.
+class MappedObservable(Observable[R_co]):
+    def __init__(self, source: Observable[A_co], func: Callable[[A_co], R_co]):
+        self.source = source
+        self.func = func
 
-    From https://monix.io/docs/current/reactive/observable.html
-    To obey the contract and preserve back-pressure,
-    the Observable will have to wait for its result before it can pass the next element.
-    Ack can be either Continue (ok to send the next element) or Stop (we should shut down).
-    This way, we can stop the downstream processing (by calling onComplete) and the upstream
-     (returning Stop after onNext).
-    """
+    async def subscribe(self, subscriber: Subscriber[R_co]) -> None:
+        async def on_next(value: A_co) -> Acknowledgement:  # type: ignore
+            transformed_value = self.func(value)  # type: ignore
+            return await subscriber.on_next(transformed_value)
 
-    @abstractmethod
-    async def on_next(self, value: T_contra) -> Acknowledgement:
-        """Receive next async value."""
-        pass
+        map_subscriber: Subscriber[A_co] = create_subscriber(  # type: ignore
+            on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+        )
 
-    @abstractmethod
-    async def on_error(self, error: Exception) -> None:
-        """Receive error."""
-        pass
-
-    @abstractmethod
-    async def on_completed(self) -> None:
-        """Complete async observation."""
-        pass
-
-
-def create_subscriber(
-    on_next: Callable[[T_contra], Awaitable[Acknowledgement]] | None = None,
-    on_error: Callable[[Exception], Awaitable[None]] | None = None,
-    on_completed: Callable[[], Awaitable[None]] | None = None,
-) -> Subscriber[T_contra]:
-    """Create an Subscriber from functions."""
-
-    class AnonymousSubscriber(Subscriber[T_contra]):  # type: ignore
-        async def on_next(self, value: T_contra) -> Acknowledgement:
-            if on_next is not None:
-                return await on_next(value)
-            return Acknowledgement.ok
-
-        async def on_error(self, error: Exception) -> None:
-            if on_error is not None:
-                await on_error(error)
-
-        async def on_completed(self) -> None:
-            if on_completed is not None:
-                await on_completed()
-
-    return AnonymousSubscriber()
+        await self.source.subscribe(map_subscriber)
 
 
 class FilteredObservable(Observable[A_co]):
@@ -708,67 +669,3 @@ class FilteredObservable(Observable[A_co]):
             on_completed=subscriber.on_completed,
         )
         await self.source.subscribe(filter_subscriber)
-
-
-class PrintSubscriber(Subscriber[T_contra]):
-    async def on_next(self, value: T_contra) -> Acknowledgement:
-        print(value)
-        return Acknowledgement.ok
-
-    async def on_error(self, error: Exception) -> None:
-        print(f"Error occurred: {error}")
-
-    async def on_completed(self) -> None:
-        print("Completed")
-
-
-RunToCompletionSubscriber = Subscriber()
-
-# We introduce another TypeVar that can be used in our context
-R_co = TypeVar("R_co", covariant=True)
-
-
-class MappedObservable(Observable[R_co]):
-    def __init__(self, source: Observable[A_co], func: Callable[[A_co], R_co]):
-        self.source = source
-        self.func = func
-
-    async def subscribe(self, subscriber: Subscriber[R_co]) -> None:
-        async def on_next(value: A_co) -> Acknowledgement:  # type: ignore
-            transformed_value = self.func(value)  # type: ignore
-            return await subscriber.on_next(transformed_value)
-
-        map_subscriber: Subscriber[A_co] = create_subscriber(  # type: ignore
-            on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
-        )
-
-        await self.source.subscribe(map_subscriber)
-
-
-async def mock_api_call(item: str) -> str:
-    await anyio.sleep(0.1)
-    return f"Response from {item}"
-
-
-async def mock_api_call_2(item: str) -> str:
-    await anyio.sleep(2)
-    return f"Another Response from {item}"
-
-
-async def main():
-    # my_observable: Observable[int] = Observable.from_interval(time_unit=0.01)
-    my_observable: Observable[int] = Observable.from_iterable([1, 2, 3, 4])
-    stream = (
-        my_observable.map(lambda x: x * 2)
-        .map(lambda x: f"Number {x}")
-        # .throttle(seconds=0.1)
-        .map_async_par(mock_api_call, max_par=3)
-        .to_async_iterable()
-    )
-
-    async for item in stream:
-        print(item)
-
-
-if __name__ == "__main__":
-    run(main)
