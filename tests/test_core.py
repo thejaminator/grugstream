@@ -4,6 +4,8 @@ from typing import AsyncIterable, Iterable
 
 import anyio
 import pytest
+from anyio import create_memory_object_stream, create_task_group
+from anyio.streams.memory import MemoryObjectReceiveStream
 
 from grugstream.core import (
     Observable,
@@ -69,6 +71,7 @@ async def test_take_inclusive():
     taken = observable.take_while_inclusive(lambda x: x < 4)
     items = await taken.to_list()
     assert items == [1, 2, 3, 4]
+
 
 @pytest.mark.asyncio
 async def test_take_exclusive():
@@ -187,3 +190,20 @@ async def test_run_until_timeout():
 async def test_run_to_completion():
     result: int = await Observable.from_repeat("1", 0.01).take(10).run_to_completion()
     assert result == 10
+
+
+@pytest.mark.asyncio
+async def test_from_receive_stream():
+    collected = []
+
+    async def process_items(receive_stream: MemoryObjectReceiveStream[str]) -> None:
+        obs: Observable[str] = Observable.from_receive_stream(receive_stream)
+        await obs.take(5).for_each_to_list(collect_list=collected).print().run_to_completion()
+
+    send_stream, receive_stream = create_memory_object_stream[str](max_buffer_size=1000)
+    async with create_task_group() as tg:
+        tg.start_soon(process_items, receive_stream)
+        async with send_stream:
+            for num in range(10):
+                await send_stream.send(f'number {num}')
+    assert len(collected) == 5

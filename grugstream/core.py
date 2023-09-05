@@ -19,6 +19,7 @@ from typing import (
 import anyio
 from anyio import create_task_group, create_memory_object_stream, EndOfStream
 from anyio.abc import TaskGroup
+from anyio.streams.memory import MemoryObjectReceiveStream
 from slist import Slist
 
 from grugstream.acknowledgement import Acknowledgement
@@ -92,6 +93,15 @@ class Observable(ABC, Generic[A_co]):
                 await subscriber.on_completed()
 
         return AsyncIterableObservable()
+
+    @classmethod
+    def from_receive_stream(cls, stream: MemoryObjectReceiveStream[A]) -> "Observable[A]":
+        async def async_iterator() -> AsyncIterable[A]:
+            async with stream:
+                async for item in stream:
+                    yield item
+
+        return cls.from_async_iterable(async_iterator())
 
     @staticmethod
     def from_file(file_path: Path) -> "Observable[str]":
