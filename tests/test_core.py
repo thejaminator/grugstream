@@ -64,6 +64,21 @@ async def test_take():
 
 
 @pytest.mark.asyncio
+async def test_take_inclusive():
+    observable = Observable.from_iterable([1, 2, 3, 4, 5])
+    taken = observable.take_while_inclusive(lambda x: x < 4)
+    items = await taken.to_list()
+    assert items == [1, 2, 3, 4]
+
+@pytest.mark.asyncio
+async def test_take_exclusive():
+    observable = Observable.from_iterable([1, 2, 3, 4, 5])
+    taken = observable.take_while_exclusive(lambda x: x < 4)
+    items = await taken.to_list()
+    assert items == [1, 2, 3]
+
+
+@pytest.mark.asyncio
 async def test_distinct():
     observable = Observable.from_iterable([1, 2, 2, 3, 4, 4, 4])
     distinct = observable.distinct()
@@ -155,14 +170,14 @@ async def test_to_file(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_run_until_timeout():
-    # Create an observable that emits items every 0.1 seconds
-    observable = Observable.from_repeat("item", 0.1)
+    # Create an observable that emits items every 0.01 seconds
+    observable = Observable.from_repeat("item", 0.01)
 
     # Create a list to store received items
     received_items = []
-    result = await observable.for_each(lambda item: received_items.append(item)).run_until_timeout(3)
+    result = await observable.for_each(lambda item: received_items.append(item)).run_until_timeout(0.3)
 
-    # Check the number of received items. It should be close to 30 (= 3 seconds / 0.1 seconds per item)
+    # Check the number of received items. It should be close to 30 (= 0.3 seconds / 0.01 seconds per item)
     # Allowing some leeway for processing time
     assert 25 <= len(received_items) <= 35
     assert result == len(received_items)

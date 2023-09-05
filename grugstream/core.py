@@ -570,6 +570,50 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
+    def take_while_exclusive(self, predicate: Callable[[A_co], bool]) -> 'Observable[A_co]':
+        """Takes elements while the elements fufill the predicate
+        If an element does not fulfill the predicate, the stream stops.
+        The element that does not fulfill the predicate is not included in the stream"""
+        source = self
+
+        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
+            async def on_next(value: A_co) -> Acknowledgement:
+                if predicate(value):
+                    return await subscriber.on_next(value)
+                else:
+                    # call on_completed when predicate violated
+                    await subscriber.on_completed()
+                    return Acknowledgement.stop
+
+            take_subscriber = create_subscriber(on_next=on_next)
+
+            await source.subscribe(take_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def take_while_inclusive(self, predicate: Callable[[A_co], bool]) -> 'Observable[A_co]':
+        """Takes elements while the elements fufill the predicate
+        If an element does not fulfill the predicate, the stream stops.
+        The final element that does not fulfill the predicate is included in the stream"""
+        source = self
+
+        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
+            async def on_next(value: A_co) -> Acknowledgement:
+                if predicate(value):
+                    return await subscriber.on_next(value)
+                else:
+                    # include the violating element in the stream
+                    await subscriber.on_next(value)
+                    # call on_completed when predicate violated
+                    await subscriber.on_completed()
+                    return Acknowledgement.stop
+
+            take_subscriber = create_subscriber(on_next=on_next)
+
+            await source.subscribe(take_subscriber)
+
+        return create_observable(subscribe_async)
+
     def take_last(self, n: int) -> 'Observable[A_co]':
         source = self
         buffer = deque(maxlen=n)
