@@ -23,8 +23,7 @@ from slist import Slist
 
 from grugstream.acknowledgement import Acknowledgement
 from grugstream.exceptions import GrugSumError
-
-from grugstream.subscriber import T_contra, R_co, Subscriber, create_subscriber
+from grugstream.subscriber import T_contra, Subscriber, create_subscriber
 
 if TYPE_CHECKING:
     from _typeshed import OpenTextMode
@@ -698,12 +697,12 @@ class Observable(ABC, Generic[A_co]):
         return count
 
 
-class MappedObservable(Observable[R_co]):
-    def __init__(self, source: Observable[A_co], func: Callable[[A_co], R_co]):
+class MappedObservable(Observable[B]):
+    def __init__(self, source: Observable[A_co], func: Callable[[A_co], B]):
         self.source = source
         self.func = func
 
-    async def subscribe(self, subscriber: Subscriber[R_co]) -> None:
+    async def subscribe(self, subscriber: Subscriber[B]) -> None:
         async def on_next(value: A_co) -> Acknowledgement:  # type: ignore
             transformed_value = self.func(value)  # type: ignore
             return await subscriber.on_next(transformed_value)

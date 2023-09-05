@@ -69,7 +69,3 @@ def create_subscriber(
                 await on_completed()
 
     return AnonymousSubscriber()
-
-
-RunToCompletionSubscriber = create_subscriber()
-R_co = TypeVar("R_co", covariant=True)
