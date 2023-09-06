@@ -1,3 +1,4 @@
+# stolen from erees1
 .PHONY: hooks
 hooks:
 	pre-commit install --overwrite --install-hooks --hook-type pre-commit --hook-type post-checkout --hook-type pre-push
@@ -14,4 +15,3 @@ check-python:
 .PHONY: env
 env: check-python
 	pip install -r requirements.txt
-	python -c "import nltk; nltk.download('punkt')"

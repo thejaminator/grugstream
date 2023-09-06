@@ -1,5 +1,7 @@
 # Grugstream
 
+[![Build Status](https://github.com/thejaminator/grugstream/actions/workflows/main.yml/badge.svg)](https://github.com/raybears/cot-transparency/actions/workflows/main.yml)
+
 ## Introduction
 
 The grugstream library provides an easy way to work with asynchronous/ reactive / streaming programming in Python. It allows you to model and process asynchronous streams of events using non-blocking back-pressure.
@@ -17,9 +19,9 @@ Also - everything is statically typed!
 
 ### Basic Example
 Generally - what we always do is
-1. Create an observable
+1. Create an observable (A stream that is not running yet)
 2. Transform it with operators
-3. Run (subscribe) to it. 
+3. Run it. 
    - For example, `to_list` will run the observable and collect the results into a list.
    - `run_to_completion` will run the observable until it completes
    - `to_file` will run the observable and write the results to a file
