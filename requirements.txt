@@ -8,3 +8,7 @@ pydantic
 pytest - asyncio
 tqdm
 pre-commit
+mkdocs
+mkdocstrings
+mkdocs-material
+mkdocstrings-python
