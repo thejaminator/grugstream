@@ -30,7 +30,7 @@ line-length = 120
 
 
 [tool.pyright]
-exclude = ["venv"]
+exclude = ["venv", "scripts/demo_cache"]
 
 strictListInference = true
 strictDictionaryInference = true

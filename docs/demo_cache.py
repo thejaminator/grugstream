@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from typing import TypeVar, Generic, Type, Callable, Hashable
+from typing import TypeVar, Generic, Type, Callable
 
 import anyio
 from anyio import open_file
@@ -117,7 +117,6 @@ class GenericCache(Generic[GenericBaseModel]):
     async def update_cache(self) -> None:
         # TODO
         ...
-
 
 
 class StageOneCache:
