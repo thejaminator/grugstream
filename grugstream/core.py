@@ -474,6 +474,32 @@ class Observable(ABC, Generic[A_co]):
     def map_async_par(
         self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
     ) -> 'Observable[B]':
+        """Map values asynchronously in parallel using func.
+
+        Parameters
+        ----------
+        func : Callable
+            Async function to apply to each value.
+        max_buffer_size : int, optional
+            Max size of buffer for pending values.
+        max_par : int, optional
+            Max number of concurrent mappings.
+
+        Returns
+        -------
+        Observable
+            An Observable with the asynchronously mapped values.
+
+        Examples
+        --------
+        >>> async def slow_double(x):
+        >>>     await asyncio.sleep(1)
+        >>>     return x * 2
+        >>> source = Observable.interval(0.1).take(10)
+        >>> mapped = source.map_async_par(slow_double, max_par=3)
+        >>> await mapped.to_list() # runs ~3x faster due to parallel mapping
+        [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+        """
         source = self
         send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
 
@@ -515,6 +541,28 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def for_each(self, func: Callable[[A_co], None]) -> "Observable[A_co]":
+        """Apply func to each value but don't modify stream.
+
+        Parameters
+        ----------
+        func : Callable
+            Function to apply to each value.
+
+        Returns
+        -------
+        Observable
+            Output Observable with values unchanged.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> obs.for_each(print).to_list()
+        1
+        2
+        3
+        [1, 2, 3]
+        """
+
         def return_original(value: A_co) -> A_co:
             func(value)
             return value
@@ -522,6 +570,28 @@ class Observable(ABC, Generic[A_co]):
         return self.map(return_original)
 
     def for_each_enumerated(self, func: Callable[[int, A_co], None]) -> "Observable[A_co]":
+        """Apply indexed func to each value, but don't modify stream.
+
+        Parameters
+        ----------
+        func : Callable
+            Function accepting index and value.
+
+        Returns
+        -------
+        Observable
+            Output Observable with values unchanged.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable(['a', 'b', 'c'])
+        >>> obs.for_each_enumerated(lambda i, x: print(f'{i}: {x}')).to_list()
+        0: a
+        1: b
+        2: c
+        ['a', 'b', 'c']
+        """
+
         def return_original(idx: int, value: A_co) -> A_co:
             func(idx, value)
             return value
@@ -529,6 +599,28 @@ class Observable(ABC, Generic[A_co]):
         return self.enumerated().map_2(return_original)
 
     def for_each_to_list(self, collect_list: list[A_co]) -> "Observable[A_co]":
+        """Append each value to a list.
+
+        Parameters
+        ----------
+        collect_list : list
+            The list to append values to.
+
+        Returns
+        -------
+        Observable
+            Output Observable with values unchanged.
+
+        Examples
+        --------
+        >>> my_list = []
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> obs.for_each_to_list(my_list).to_list()
+        [1, 2, 3]
+        >>> my_list
+        [1, 2, 3]
+        """
+
         def append_to_list(value: A_co) -> A_co:
             collect_list.append(value)
             return value
@@ -536,6 +628,26 @@ class Observable(ABC, Generic[A_co]):
         return self.map(append_to_list)
 
     def for_each_to_stream(self, stream: MemoryObjectSendStream[A_co]) -> "Observable[A_co]":
+        """Send each value to a stream.
+
+        Parameters
+        ----------
+        stream : MemoryObjectSendStream
+            The stream to send values to.
+
+        Returns
+        -------
+        Observable
+            Output Observable with values unchanged.
+
+        Examples
+        --------
+        >>> send_stream, _ = create_memory_object_stream()
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> obs.for_each_to_stream(send_stream)
+        >>> # `send_stream` will have received the values
+        """
+
         async def send(value: A_co) -> A_co:
             await stream.send(value)
             return value
@@ -549,6 +661,30 @@ class Observable(ABC, Generic[A_co]):
         serialize: Callable[[A_co], str] = str,
         write_newline: bool = True,
     ) -> "Observable[A_co]":
+        """
+        Parameters
+        ----------
+        file_path : Path
+            Path to write the file to.
+        mode : OpenTextMode, default 'a'
+            File open mode.
+        serialize : Callable, default str
+            Function to serialize values to strings.
+        write_newline : bool, default True
+            Whether to write a newline after each value.
+
+        Returns
+        -------
+        Observable
+            Output Observable with values unchanged.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.for_each_to_file(Path('data.txt')).run_to_completion()
+        # data.txt will contain '1\n2\n3\n'
+        """
+
         async def append_to_file(value: A_co) -> None:
             async with await anyio.open_file(file_path, mode=mode) as file:
                 await file.write(serialize(value) + ('\n' if write_newline else ''))
@@ -556,6 +692,32 @@ class Observable(ABC, Generic[A_co]):
         return self.for_each_async(append_to_file)
 
     def for_each_async(self, func: Callable[[A_co], Awaitable[None]]) -> "Observable[A_co]":
+        """Apply asynchronous func to each value.
+
+        Parameters
+        ----------
+        func : Callable
+            Asynchronous function to apply.
+
+        Returns
+        -------
+        Observable
+            Output Observable with values unchanged.
+
+        Examples
+        --------
+        >>> async def print_delayed(x):
+        >>>     await asyncio.sleep(1)
+        >>>     print(x)
+        >>>
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> obs.for_each_async(print_delayed).to_list()
+        1    # printed after 1 second
+        2    # printed after 1 more second
+        3
+        [1, 2, 3]
+        """
+
         async def return_original(value: A_co) -> A_co:
             await func(value)
             return value
@@ -586,9 +748,46 @@ class Observable(ABC, Generic[A_co]):
         return FilteredObservable(source=self, predicate=predicate)
 
     def distinct(self: 'Observable[CanHash]') -> 'Observable[CanHash]':
+        """Filter Observable to only emit distinct values.
+
+        Items are compared directly for uniqueness.
+
+        Returns
+        -------
+        Observable
+            Observable that contains items that implement __hash__.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 2, 3, 3, 1])
+        >>> distinct = obs.distinct()
+        >>> await distinct.to_list()
+        [1, 2, 3]
+        """
         return self.distinct_by(lambda x: x)
 
     def distinct_by(self: 'Observable[A]', key: Callable[[A], CanHash]) -> 'Observable[A_co]':
+        """Filter Observable to only emit values with distinct keys.
+
+        Items with different keys are considered distinct.
+
+        Parameters
+        ----------
+        key : Callable
+            Function to extract comparison key for each item.
+
+        Returns
+        -------
+        Observable
+            Observatory of items with distinct keys.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([{'id': 1}, {'id': 2}, {'id': 1}])
+        >>> distinct = obs.distinct_by(lambda x: x['id'])
+        >>> await distinct.to_list()
+        [{'id': 1}, {'id': 2}]
+        """
         seen = set[CanHash]()
 
         async def subscribe_async(subscriber: Subscriber[A]) -> None:
