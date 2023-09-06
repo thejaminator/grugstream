@@ -779,7 +779,7 @@ class Observable(ABC, Generic[A_co]):
         Returns
         -------
         Observable
-            Observatory of items with distinct keys.
+            Observable of items with distinct keys.
 
         Examples
         --------
@@ -807,6 +807,24 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def flatten_iterable(self: 'Observable[Iterable[A]]') -> 'Observable[A]':
+        """Flatten an Observable of iterables into an Observable of values.
+
+        Flattens an Observable of nested iterables into a single
+        Observable emitting all the nested values.
+
+        Returns
+        -------
+        Observable[A]
+            Observable emitting all values from nested iterables.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([[1, 2], [3, 4]])
+        >>> flattened = obs.flatten_iterable()
+        >>> await flattened.to_list()
+        [1, 2, 3, 4]
+        """
+
         async def subscribe_async(subscriber: Subscriber[A]) -> None:
             async def on_next(iterable: Iterable[A]) -> Acknowledgement:
                 for item in iterable:
@@ -824,9 +842,30 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def flatten_list(self: 'Observable[Sequence[A_co]]') -> 'Observable[A_co]':
+        """Flatten an Observable of lists into an Observable of values."""
         return self.flatten_iterable()
 
     def flatten_async_iterable(self: 'Observable[AsyncIterable[A]]') -> 'Observable[A]':
+        """Flatten an Observable of async iterables into an Observable of values.
+
+        Flattens an Observable of nested async iterables into a single
+        Observable emitting all the nested values.
+
+        Returns
+        -------
+        Observable[A]
+            Observable emitting all values from nested async iterables.
+
+        Examples
+        --------
+        >>> async def gen(x):
+        >>>     yield x
+        >>> obs = Observable.from_iterable([gen(1), gen(2)])
+        >>> flattened = obs.flatten_async_iterable()
+        >>> await flattened.to_list()
+        [1, 2]
+        """
+
         async def subscribe_async(subscriber: Subscriber[A]) -> None:
             async def on_next(iterable: AsyncIterable[A]) -> Acknowledgement:
                 async for item in iterable:
@@ -844,6 +883,23 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def flatten_optional(self: 'Observable[A | None]') -> 'Observable[A]':
+        """Flatten an Observable of Optional values into an Observable of present values.
+
+        Flattens an Observable of Optional values, removing any None values.
+
+        Returns
+        -------
+        Observable[A]
+            Observable only emitting present values, removing any Nones.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, None, 2, None, 3])
+        >>> flattened = obs.flatten_optional()
+        >>> await flattened.to_list()
+        [1, 2, 3]
+        """
+
         async def subscribe_async(subscriber: Subscriber[A]) -> None:
             async def on_next(value: A | None) -> Acknowledgement:
                 if value is not None:
@@ -859,6 +915,26 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def flatten_observable(self: 'Observable[Observable[B_co]]') -> 'Observable[B_co]':
+        """Flatten Observable of Observables into one Observable.
+
+        Flattens an Observable emitting other Observables, into a single
+        Observable emitting all the values from the nested Observables.
+
+        Returns
+        -------
+        Observable[B]
+            Observable emitting all values from nested Observables.
+
+        Examples
+        --------
+        >>> obs1 = Observable.from_iterable([1, 2])
+        >>> obs2 = Observable.from_iterable([3, 4])
+        >>> outer = Observable.from_iterable([obs1, obs2])
+        >>> flattened = outer.flatten_observable()
+        >>> await flattened.to_list()
+        [1, 2, 3, 4]
+        """
+
         async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
             async def on_inner_next(value: B_co) -> Acknowledgement:
                 return await subscriber.on_next(value)
@@ -879,6 +955,27 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def throttle(self, seconds: float, max_buffer_size: int = 1) -> 'Observable[A_co]':
+        """Throttle emissions to at most one per `seconds` interval.
+
+        Parameters
+        ----------
+        seconds : float
+            Interval duration between emissions
+        max_buffer_size : int, default 1
+            Max number of values to buffer
+
+        Returns
+        -------
+        Observable
+            Throttled Observatory allowing at most one emission per interval
+
+        Examples
+        --------
+        >>> obs = Observable.interval(0.1)
+        >>> throttled = obs.throttle(1.0)
+        >>> await throttled.take(3).to_list()
+        [0, 1, 2] # emitted at 1 second intervals
+        """
         source = self
         send_stream, receive_stream = create_memory_object_stream[A](max_buffer_size=max_buffer_size)  # type: ignore
 
@@ -931,14 +1028,54 @@ class Observable(ABC, Generic[A_co]):
     def print(
         self: "Observable[A_co]", prefix: str = "", printer: Callable[[A_co], None] = print
     ) -> "Observable[A_co]":
+        """Print values from the Observable using print().
+
+        Prints each value emitted by the Observable after prepending
+        `prefix`.
+
+        Parameters
+        ----------
+        prefix : str, default ""
+            String to prepend to printed values.
+        printer : Callable, default print
+            Function to use for printing.
+
+        Returns
+        -------
+        Observable
+            Output Observable with unchanged values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> obs.print("Item: ").to_list()
+        Item: 1
+        Item: 2
+        Item: 3
+        [1, 2, 3]
+        """
         return self.for_each(lambda x: printer(f"{prefix}{x}"))  # type: ignore
 
     def tqdm(self, tqdm_bar: Optional[tqdm]) -> 'Observable[A_co]':  # type: ignore
-        """
-        Wrap the observable with a tqdm progress bar.
+        """Wrap the Observable with a tqdm progress bar.
 
-        :param n: Number of items to expect. If None, we won't log it to tqdm
-        :return: Observable with tqdm logging.
+        Parameters
+        ----------
+        tqdm_bar : Optional[tqdm], default None
+            tqdm progress bar to use, or None to use default
+
+        Returns
+        -------
+        Observable
+            Wrapped Observatory with tqdm progress bar
+
+        Examples
+        --------
+        >>> from tqdm import tqdm
+        >>> pbar = tqdm(desc="Progress")
+        >>> obs = Observable.from_interval(1)
+        >>> obs.tqdm(pbar).take(10).run_to_completion()
+        # pbar will show 1 it/s progress
         """
         source = self
 
@@ -970,6 +1107,19 @@ class Observable(ABC, Generic[A_co]):
         return TQDMObservable()
 
     async def to_list(self) -> list[A_co]:
+        """Collect all values from the Observable into a list.
+
+        Returns
+        -------
+        list
+            List containing all values emitted by the Observable.
+
+        Examples
+        --------
+        >>> obs = Observable.from_interval(0.1).take(3)
+        >>> await obs.to_list()
+        [1, 2, 3]
+        """
         result = []
 
         async def on_next(value: A_co) -> Acknowledgement:
@@ -982,9 +1132,35 @@ class Observable(ABC, Generic[A_co]):
         return result
 
     async def to_slist(self) -> 'Slist[A_co]':
+        """Collect values into an Slist.
+
+        Returns
+        -------
+        Slist
+            Slist containing all values emitted.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.to_slist()
+        Slist([1, 2, 3])
+        """
         return Slist(await self.to_list())
 
-    async def to_set(self) -> set[A_co]:
+    async def to_set(self: "Observable[CanHash]") -> set[A_co]:
+        """Collect values into a set, removing duplicates.
+
+        Returns
+        -------
+        set
+            Set containing unique values emitted.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 1])
+        >>> await obs.to_set()
+        {1, 2}
+        """
         result = set()
 
         async def on_next(value: A_co) -> Acknowledgement:
@@ -998,6 +1174,22 @@ class Observable(ABC, Generic[A_co]):
         return result
 
     async def to_async_iterable(self) -> AsyncIterable[A_co]:
+        """Collect values into an async iterable.
+
+        Returns
+        -------
+        AsyncIterable[A_co]
+            Async iterable containing all emitted values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> async for value in obs.to_async_iterable():
+        >>>     print(value)
+        1
+        2
+        3
+        """
         items = []
         event = anyio.Event()
         processing_limit = anyio.CapacityLimiter(1)
@@ -1044,6 +1236,25 @@ class Observable(ABC, Generic[A_co]):
         serialize: Callable[[A_co], str] = str,
         write_newline: bool = True,
     ) -> None:
+        """Write all emitted values to a file.
+
+        Parameters
+        ----------
+        file_path : Path
+            Path to write output file to.
+        mode : OpenTextMode, default 'a'
+            Mode to open file with.
+        serialize : Callable, default str
+            Function to serialize items to strings.
+        write_newline : bool, default True
+            Whether to write newline after each value.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.to_file('data.txt')
+        """
+
         async def on_next(value: A_co) -> Acknowledgement:
             async with await anyio.open_file(file_path, mode=mode) as file:
                 await file.write(serialize(value) + ('\n' if write_newline else ''))
@@ -1054,6 +1265,26 @@ class Observable(ABC, Generic[A_co]):
         await self.subscribe(file_subscriber)
 
     async def reduce(self, func: Callable[[A, A], A], initial: A) -> A:
+        """Reduce the Observable using `func`, starting with `initial`.
+
+        Parameters
+        ----------
+        func : Callable[[A, A], A]
+            Function to apply to accumulate values.
+        initial : A
+            Initial value to start reduction from.
+
+        Returns
+        -------
+        A
+            Final accumulated reduction value.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.reduce(lambda acc, x: acc + x, 0)
+        6
+        """
         result = initial
 
         async def on_next(value: A) -> Acknowledgement:
@@ -1068,10 +1299,38 @@ class Observable(ABC, Generic[A_co]):
         return result
 
     async def sum(self: 'Observable[int | float]') -> int | float:
+        """Sum all emitted values.
+
+        Returns
+        -------
+        int | float
+            Sum of all emitted values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.sum()
+        6
+        """
         return await self.reduce(lambda a, b: a + b, 0)
 
     async def sum_option(self: "Observable[CanAdd]") -> Optional[CanAdd]:
-        """Sums with addition. Returns None if the observable is empty"""
+        """Sum values using +, return None if empty.
+
+        Returns
+        -------
+        Optional[CanAdd]
+            Sum of values or None if empty.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.sum_option()
+        6
+        >>> empty = Observable.from_iterable([])
+        >>> await empty.sum_option()
+        None
+        """
         result = None
 
         async def on_next(value: CanAdd) -> Acknowledgement:
@@ -1086,13 +1345,52 @@ class Observable(ABC, Generic[A_co]):
         return result
 
     async def sum_or_raise(self: "Observable[CanAdd]") -> CanAdd:
-        """Folds left with addition. Raises if the list is empty"""
+        """Sum values using +, raise if empty.
+
+        Raises
+        ------
+        GrugSumError
+            If the Observable is empty.
+
+        Returns
+        -------
+        CanAdd
+            Sum of values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.sum_or_raise()
+        6
+        >>> empty = Observable.from_iterable([])
+        >>> await empty.sum_or_raise()
+        # raises GrugSumError
+        """
         result = await self.sum_option()
         if result is None:
             raise GrugSumError("Cannot sum an empty observable")
         return result
 
     def take(self, n: int) -> 'Observable[A_co]':
+        """Take the first n values from the Observable.
+
+        Parameters
+        ----------
+        n : int
+            Number of values to take.
+
+        Returns
+        -------
+        Observable
+            Observable emitting the first n values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
+        >>> taken = obs.take(3)
+        >>> await taken.to_list()
+        [1, 2, 3]
+        """
         source = self
 
         async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
@@ -1114,9 +1412,27 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def take_while_exclusive(self, predicate: Callable[[A_co], bool]) -> 'Observable[A_co]':
-        """Takes elements while the elements fufill the predicate
-        If an element does not fulfill the predicate, the stream stops.
-        The element that does not fulfill the predicate is not included in the stream"""
+        """Take values until predicate is false.
+
+        Stops **before** emitting the first value where `predicate` is false.
+
+        Parameters
+        ----------
+        predicate : Callable
+            Function to test each value.
+
+        Returns
+        -------
+        Observable
+            Observable emitting values until predicate is false.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
+        >>> taken = obs.take_while_exclusive(lambda x: x < 4)
+        >>> await taken.to_list()
+        [1, 2, 3]
+        """
         source = self
 
         async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
@@ -1135,9 +1451,27 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def take_while_inclusive(self, predicate: Callable[[A_co], bool]) -> 'Observable[A_co]':
-        """Takes elements while the elements fufill the predicate
-        If an element does not fulfill the predicate, the stream stops.
-        The final element that does not fulfill the predicate is included in the stream"""
+        """Take values until predicate is false.
+
+        Stops **after** emitting the last value where `predicate` is true.
+
+        Parameters
+        ----------
+        predicate : Callable
+            Function to test each value.
+
+        Returns
+        -------
+        Observable
+            Observable emitting values until predicate is false.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
+        >>> taken = obs.take_while_inclusive(lambda x: x < 4)
+        >>> await taken.to_list()
+        [1, 2, 3, 4]
+        """
         source = self
 
         async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
@@ -1158,6 +1492,25 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def take_last(self, n: int) -> 'Observable[A_co]':
+        """Take the last n values from the Observable.
+
+        Parameters
+        ----------
+        n : int
+            Number of last values to take.
+
+        Returns
+        -------
+        Observable
+            Observable emitting the last n values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
+        >>> taken = obs.take_last(2)
+        >>> await taken.to_list()
+        [4, 5]
+        """
         source = self
         buffer = deque(maxlen=n)
 
@@ -1181,17 +1534,40 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def limit(self, n: int) -> 'Observable[A_co]':
-        # alias for take
-        return self.take(n)
-
     async def first(self) -> A_co:
+        """Get the first emitted value from the Observable.
+
+        Returns
+        -------
+        A_co
+            The first value emitted, or raises if empty.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.first()
+        1
+        """
         items = await self.take(1).to_list()
         return items[0]
 
     async def run_to_completion(self) -> int:
-        """Runs the observable to completion, returning the number of
-        final items processed"""
+        """Run the Observable and count emitted values.
+
+        Runs the Observable until completion, counting the
+        number of final values emitted.
+
+        Returns
+        -------
+        int
+            Number of values emitted before completion.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3]).take(2)
+        >>> await obs.run_to_completion()
+        2
+        """
         count = 0
 
         async def on_next(value: A_co) -> Acknowledgement:
@@ -1206,12 +1582,26 @@ class Observable(ABC, Generic[A_co]):
         return count
 
     async def run_until_timeout(self, seconds: float) -> int:
-        """
-        Run the observable until a specified timeout (in seconds).
+        """Run the Observable until a timeout occurs.
 
-        :param seconds: Time duration to run the observable.
+        Runs the Observable until `seconds` elapse, counting the
+        number of values emitted in that time.
 
-        returns the number of final items processed
+        Parameters
+        ----------
+        seconds : float
+            Number of seconds to run for.
+
+        Returns
+        -------
+        int
+            Count of values emitted before timeout.
+
+        Examples
+        --------
+        >>> obs = Observable.from_interval(0.1)
+        >>> await obs.run_until_timeout(0.3)
+        # Emits ~3 values in 0.3 seconds
         """
         count = 0
 
