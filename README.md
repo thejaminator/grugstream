@@ -268,7 +268,7 @@ observable = Observable.from_iterable([[1, 2], [3, 4]])
 flattened_observable = observable.flatten_iterable()
 ```
 
-## Back-pressure, Buffering, Throttling
+## Back-pressure, Buffearing, Throttling
 
 The library supports back-pressure to ensure that the producer and consumer are in sync. There are also methods like `throttle(seconds)` to control the rate of emissions.
 

@@ -63,19 +63,96 @@ def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]
 
 
 class Observable(ABC, Generic[A_co]):
-    """Abstract base class for Observable."""
+    """An asynchronous observable (stream)
+
+    Represents aasynchronous sequence that can be subscribed to for
+    receiving notifications as new values arrive.
+    """
 
     def from_one(self, value: A) -> "Observable[A]":
+        """Create an Observable that emits a single value.
+
+        Parameters
+        ----------
+        value :
+            The value to emit.
+
+        Returns
+        -------
+        Observable
+            An Observable that emits the given value.
+
+        Examples
+        --------
+        >>> obs = Observable.from_one(10)
+        >>> await obs.to_list()
+        [10]
+
+        """
         return self.from_iterable([value])
 
     def from_empty(self) -> "Observable[A]":  # type: ignore
+        """Create an empty Observable that emits no items.
+
+        Returns
+        -------
+        Observable
+            An Observable that emits no items and immediately completes.
+
+        Examples
+        --------
+        >>> obs = Observable.from_empty()
+        >>> await obs.to_list()
+        []
+        """
         return self.from_iterable([])
 
     def from_one_option(self, value: A | None) -> "Observable[A]":
+        """Create an Observable emitting value if not None.
+
+        Parameters
+        ----------
+        value : Any
+            The value to emit. If None, emits nothing.
+
+        Returns
+        -------
+        Observable
+            Observable emitting value if not None, otherwise empty.
+
+        Examples
+        --------
+        >>> obs = Observable.from_one_option(10)
+        >>> await obs.to_list()
+        [10]
+
+        >>> obs = Observable.from_one_option(None)
+        >>> await obs.to_list()
+        []
+        """
         return self.from_iterable([value]) if value is not None else self.from_iterable([])
 
     @staticmethod
     def from_iterable(iterable: Iterable[A]) -> "Observable[A]":
+        """Create an Observable from an iterable data source.
+
+        Parameters
+        ----------
+        iterable : Iterable
+            The iterable source to convert to an Observable
+
+        Returns
+        -------
+        Observable
+            An Observable emitting the values from the iterable
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.to_list()
+        [1, 2, 3]
+        """
+
         class IterableObservable(Observable[A]):  # type: ignore
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 ack = Acknowledgement.ok
@@ -89,6 +166,28 @@ class Observable(ABC, Generic[A_co]):
 
     @staticmethod
     def from_async_iterable(iterable: AsyncIterable[A]) -> "Observable[A]":
+        """Create an Observable from an asynchronous iterable.
+
+        Parameters
+        ----------
+        iterable : AsyncIterable
+            The asynchronous iterable to convert to an Observable.
+
+        Returns
+        -------
+        Observable
+            An Observable emitting values from the async iterable.
+
+        Examples
+        --------
+        >>> async def gen():
+        >>>     yield 1
+        >>>     yield 2
+        >>> obs = Observable.from_async_iterable(gen())
+        >>> await obs.to_list()
+        [1, 2]
+        """
+
         class AsyncIterableObservable(Observable[A]):  # type: ignore
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 ack = Acknowledgement.ok
@@ -111,6 +210,25 @@ class Observable(ABC, Generic[A_co]):
 
     @staticmethod
     def from_file(file_path: Path) -> "Observable[str]":
+        """Create an Observable that emits lines from a text file.
+
+        Parameters
+        ----------
+        file_path : Path
+            Path to the text file.
+
+        Returns
+        -------
+        Observable[str]
+            An Observable emitting each line of the text file.
+
+        Examples
+        --------
+        >>> obs = Observable.from_file('data.txt')
+        >>> await obs.take(3).to_list()
+        ['line1', 'line2', 'line3']
+        """
+
         async def async_iterator() -> AsyncIterable[str]:
             async with await anyio.open_file(file_path) as f:
                 async for line in f:
@@ -120,6 +238,28 @@ class Observable(ABC, Generic[A_co]):
 
     @staticmethod
     def from_interval(seconds: float) -> 'Observable[int]':
+        """Create an Observable emitting incremental numbers periodically.
+
+        Emits an infinite sequence of incremental integers, with time
+        period of `seconds` between each emission.
+
+        Parameters
+        ----------
+        seconds : float
+            The interval in seconds between emissions.
+
+        Returns
+        -------
+        Observable[int]
+            An Observable emitting incremental numbers at fixed interval.
+
+        Examples
+        --------
+        >>> obs = Observable.from_interval(1.0)
+        >>> await obs.take(3).to_list()
+        [0, 1, 2]
+        """
+
         async def emit_values(subscriber: Subscriber[int]) -> None:
             counter = 0
             ack = Acknowledgement.ok
@@ -152,6 +292,21 @@ class Observable(ABC, Generic[A_co]):
         pass
 
     def enumerated(self) -> "Observable[tuple[int, A_co]]":
+        """Enumerate the values emitted by this Observable.
+
+        Returns
+        -------
+        Observable
+            An Observable of (index, value) tuples.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable(['a', 'b', 'c'])
+        >>> enumerated = obs.enumerated()
+        >>> await enumerated.to_list()
+        [(0, 'a'), (1, 'b'), (2, 'c')]
+
+        """
         source = self
 
         async def subscribe(subscriber: Subscriber[tuple[int, A_co]]) -> None:
@@ -173,6 +328,27 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe)
 
     def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
+        """Map values emitted by this Observable.
+
+        Applies a mapping function to each item emitted by the source.
+
+        Parameters
+        ----------
+        mapper : Callable
+            The mapping function to apply to each item.
+
+        Returns
+        -------
+        Observable
+            An Observable with the mapped values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> mapped = await obs.map(lambda x: x * 2).to_list()
+        >>> mapped
+        [2, 4, 6]
+        """
         source = self
 
         async def subscribe(subscriber: Subscriber[B_co]) -> None:
@@ -189,12 +365,72 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe)
 
     def map_enumerated(self, func: Callable[[int, A_co], B_co]) -> "Observable[B_co]":
+        """Map enumerated values from the Observable.
+
+        Parameters
+        ----------
+        func : Callable
+            The mapping function to apply, taking the index and value.
+
+        Returns
+        -------
+        Observable
+            An Observable with the mapped enumerated values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable(['a', 'b', 'c'])
+        >>> mapped = obs.map_enumerated(lambda i, x: str(i) + x)
+        >>> await mapped.to_list()
+        ['0a', '1b', '2c']
+        """
         return self.enumerated().map_2(func)
 
     def map_2(self: "Observable[tuple[A, B]]", func: Callable[[A, B], C]) -> "Observable[C]":
+        """Map an Observable of pairs using a two-arg function.
+
+        Parameters
+        ----------
+        func : Callable
+            The mapping function taking two arguments.
+
+        Returns
+        -------
+        Observable
+            An Observable with the mapped values.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([(1, 'a'), (2, 'b')])
+        >>> mapped = obs.map_2(lambda x, y: (x, y.upper()))
+        >>> await mapped.to_list()
+        [(1, 'A'), (2, 'B')]
+        """
         return self.map(lambda x: func(x[0], x[1]))
 
     def map_async(self, func: Callable[[A_co], Awaitable[B_co]]) -> 'Observable[B_co]':
+        """Map values asynchronously using func.
+
+        Parameters
+        ----------
+        func : Callable
+            Async function to apply to each value.
+
+        Returns
+        -------
+        Observable
+            An Observable with the asynchronously mapped values.
+
+        Examples
+        --------
+        >>> async def double(x):
+        >>>     await asyncio.sleep(1)
+        >>>     return x * 2
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> mapped = obs.map_async(double)
+        >>> await mapped.to_list()
+        [2, 4, 6]
+        """
         source = self
 
         async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
@@ -211,6 +447,28 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def map_2_async(self: "Observable[tuple[A, B]]", func: Callable[[A, B], Awaitable[C]]) -> "Observable[C]":
+        """Map pairs asynchronously using func.
+
+        Parameters
+        ----------
+        func : Callable
+            Async function taking two arguments to apply.
+
+        Returns
+        -------
+        Observable
+            An Observable with asynchronously mapped values.
+
+        Examples
+        --------
+        >>> async def concat(x, y):
+        >>>     await asyncio.sleep(1)
+        >>>     return f'{x}.{y}'
+        >>> obs = Observable.from_iterable([('a', 1), ('b', 2)])
+        >>> mapped = obs.map_2_async(concat)
+        >>> await mapped.to_list()
+        ['a.1', 'b.2']
+        """
         return self.map_async(lambda x: func(x[0], x[1]))
 
     def map_async_par(
@@ -305,6 +563,26 @@ class Observable(ABC, Generic[A_co]):
         return self.map_async(return_original)
 
     def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
+        """Filter values emitted by this Observable.
+
+        Parameters
+        ----------
+        predicate : callable
+            The function to evaluate for each item.
+
+        Returns
+        -------
+        Observable
+            An Observable only emitting values where predicate is True.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3, 4])
+        >>> filtered = obs.filter(lambda x: x % 2 == 0)
+        >>> await filtered.to_list()
+        [2, 4]
+
+        """
         return FilteredObservable(source=self, predicate=predicate)
 
     def distinct(self: 'Observable[CanHash]') -> 'Observable[CanHash]':
