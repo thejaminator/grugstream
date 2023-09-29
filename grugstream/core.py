@@ -65,8 +65,7 @@ def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]
 class Observable(ABC, Generic[A_co]):
     """An asynchronous observable (stream)
 
-    Represents aasynchronous sequence that can be subscribed to for
-    receiving notifications as new values arrive.
+    Represents an asynchronous streaming sequence
     """
 
     def from_one(self, value: A) -> "Observable[A]":
