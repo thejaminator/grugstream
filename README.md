@@ -1,6 +1,6 @@
 # Grugstream
 
-[![Build Status](https://github.com/thejaminator/grugstream/actions/workflows/main.yml/badge.svg)](https://github.com/raybears/cot-transparency/actions/workflows/main.yml)
+[![Build Status](https://github.com/thejaminator/grugstream/actions/workflows/main.yml/badge.svg)](https://github.com/raybears/grugstream/actions/workflows/main.yml)
 
 ## Introduction
 
