@@ -9,9 +9,7 @@ from bs4 import BeautifulSoup
 
 from grugstream import Observable
 
-headers = {
-    "User-Agent": "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124"
-}
+headers = {"User-Agent": "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124"}
 
 
 async def fetch_page_content(url: str) -> Optional[str]:
