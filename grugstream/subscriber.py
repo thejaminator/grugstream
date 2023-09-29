@@ -63,6 +63,7 @@ def create_subscriber(
         async def on_error(self, error: Exception) -> None:
             if on_error is not None:
                 await on_error(error)
+            raise error
 
         async def on_completed(self) -> None:
             if on_completed is not None:

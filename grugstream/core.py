@@ -567,7 +567,7 @@ class Observable(ABC, Generic[A_co]):
                 await subscriber.on_completed()
 
             except Exception as e:
-                error = await subscriber.on_error(e)
+                await subscriber.on_error(e)
             finally:
                 await send_stream.aclose()
 
@@ -1435,7 +1435,8 @@ class Observable(ABC, Generic[A_co]):
                 if count <= n:
                     return await subscriber.on_next(value)
                 else:
-                    await subscriber.on_completed()  # call on_completed when maximum count is reached
+                    # call on_completed when maximum count is reached
+                    await subscriber.on_completed()
                     return Acknowledgement.stop
 
             take_subscriber = create_subscriber(on_next=on_next)
