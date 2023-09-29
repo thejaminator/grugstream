@@ -144,7 +144,7 @@ async def main():
 anyio.run(main)
 ```
 
-## Logging and debugging
+## Logging and debugging, print and tqdm
 We provide a `print` and `tqdm` operator to help you debug your streams.
 
 ```python
