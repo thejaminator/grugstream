@@ -1,8 +1,23 @@
-site_name: "My Library"
+site_name: "Grugstream"
 
 theme:
-  name: "material"
+  name: 'material'
+  palette:
+    scheme: slate
+    primary: indigo
+
 
 plugins:
-- search
-- mkdocstrings
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            docstring_options:
+              ignore_init_summary: yes
+            rendering:
+              show_source: true
+              show_type_annotations: true
+

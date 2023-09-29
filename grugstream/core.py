@@ -333,7 +333,7 @@ class Observable(ABC, Generic[A_co]):
 
         Parameters
         ----------
-        mapper : Callable
+        func : Callable
             The mapping function to apply to each item.
 
         Returns
@@ -472,7 +472,7 @@ class Observable(ABC, Generic[A_co]):
 
     def map_blocking_par(self, func: Callable[[A_co], B_co], max_par: int = 50) -> 'Observable[B_co]':
         """Map values blocking functions in parallel using func.
-        Only use this for IO bound functions - e.g. HTTP requests that aren't async functions
+        Only use this for IO bound functions - e.g. old code that aren't async functions
 
         Parameters
         ----------

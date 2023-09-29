@@ -1,4 +1,9 @@
-# Welcome to grugstream's documentation!
+---
+hide:
+  - navigation
+---
+
+# Grugstream's documentation
 
 
 ::: grugstream.core.Observable
