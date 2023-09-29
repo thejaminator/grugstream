@@ -567,7 +567,7 @@ class Observable(ABC, Generic[A_co]):
                 await subscriber.on_completed()
 
             except Exception as e:
-                await subscriber.on_error(e)
+                error = await subscriber.on_error(e)
             finally:
                 await send_stream.aclose()
 
@@ -874,7 +874,7 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def flatten_list(self: 'Observable[Sequence[A_co]]') -> 'Observable[A_co]':
+    def flatten_list(self: 'Observable[Sequence[A]]') -> 'Observable[A]':
         """Flatten an Observable of lists into an Observable of values."""
         return self.flatten_iterable()
 
@@ -1234,8 +1234,8 @@ class Observable(ABC, Generic[A_co]):
                 return Acknowledgement.ok
 
             async def on_error(self, error: Exception) -> None:
-                items.append(error)
                 event.set()
+                raise error
 
             async def on_completed(self) -> None:
                 event.set()
@@ -1646,6 +1646,7 @@ class Observable(ABC, Generic[A_co]):
 
             async def on_error(self, error: Exception) -> None:
                 task_group.cancel_scope.cancel()
+                raise error
 
             async def on_completed(self) -> None:
                 task_group.cancel_scope.cancel()
