@@ -1,4 +1,5 @@
 import datetime
+import time
 from pathlib import Path
 from typing import AsyncIterable, Iterable
 
@@ -47,6 +48,50 @@ async def test_map_async():
     mapped = observable.map_async(multiply_by_two)
     items = await mapped.to_list()
     assert items == [2, 4, 6]
+
+
+@pytest.mark.asyncio
+async def test_map_async_par():
+    async def multiply_by_two(x: int) -> int:
+        await anyio.sleep(0.1)
+        return x * 2
+
+    observable = Observable.from_iterable([1, 2, 3])
+    mapped = observable.map_async_par(multiply_by_two)
+    items = await mapped.to_list()
+    assert items == [2, 4, 6]
+
+
+@pytest.mark.asyncio
+async def test_map_async_par_timed():
+    async def multiply_by_two(x: int) -> int:
+        await anyio.sleep(0.1)
+        return x * 2
+
+    observable = Observable.from_interval(0.01).take(10)
+    mapped = observable.map_async_par(multiply_by_two)
+    time_start = datetime.datetime.now()
+    items = await mapped.to_list()
+    assert items == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    time_end = datetime.datetime.now()
+    time_delta = time_end - time_start
+    assert time_delta < datetime.timedelta(seconds=0.5)
+
+
+@pytest.mark.asyncio
+async def test_map_blocking_par():
+    def multiply_by_two(x: int) -> int:
+        time.sleep(0.1)
+        return x * 2
+
+    observable = Observable.from_interval(0.01).take(10)
+    mapped = observable.map_blocking_par(multiply_by_two, max_par=10)
+    time_start = datetime.datetime.now()
+    items = await mapped.to_list()
+    assert items == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    time_end = datetime.datetime.now()
+    time_delta = time_end - time_start
+    assert time_delta < datetime.timedelta(seconds=0.5)
 
 
 @pytest.mark.asyncio

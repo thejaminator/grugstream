@@ -17,7 +17,7 @@ from typing import (
 )
 
 import anyio
-from anyio import create_task_group, create_memory_object_stream, EndOfStream
+from anyio import create_task_group, create_memory_object_stream, EndOfStream, CapacityLimiter
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from slist import Slist
@@ -470,6 +470,40 @@ class Observable(ABC, Generic[A_co]):
         ['a.1', 'b.2']
         """
         return self.map_async(lambda x: func(x[0], x[1]))
+
+    def map_blocking_par(self, func: Callable[[A_co], B_co], max_par: int = 50) -> 'Observable[B_co]':
+        """Map values blocking functions in parallel using func.
+        Only use this for IO bound functions - e.g. HTTP requests that aren't async functions
+
+        Parameters
+        ----------
+        func : Callable
+            blocking function to apply to each value.
+        max_par : int, optional
+            Max number of concurrent mappings.
+
+        Returns
+        -------
+        Observable
+            An Observable with the mapped values.
+
+        Examples
+        --------
+        >>> def slow_double(x):
+        >>>     await time.sleep(1)
+        >>>     return x * 2
+        >>> source = Observable.map_blocking_par(0.1).take(10)
+        >>> mapped = source.map_async_par(slow_double, max_par=3)
+        >>> await mapped.to_list() # runs ~3x faster due to parallel mapping
+        [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+        """
+        limiter = CapacityLimiter(max_par)
+        from anyio import to_thread
+
+        async def wrapped_func(value: A_co) -> B_co:
+            return await to_thread.run_sync(func, value, limiter=limiter)
+
+        return self.map_async_par(wrapped_func, max_par=max_par)
 
     def map_async_par(
         self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
