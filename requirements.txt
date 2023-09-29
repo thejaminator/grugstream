@@ -12,3 +12,5 @@ mkdocs
 mkdocstrings
 mkdocs-material
 mkdocstrings-python
+aiohttp
+bs4
