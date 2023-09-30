@@ -1,3 +1,5 @@
+# import annotations for 3.9 compat
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import deque
 from pathlib import Path

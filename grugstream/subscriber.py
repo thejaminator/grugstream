@@ -1,3 +1,5 @@
+# import annotations for 3.9 compat
+from __future__ import annotations
 from abc import abstractmethod
 from typing import TypeVar, Callable, Awaitable, Generic
 
