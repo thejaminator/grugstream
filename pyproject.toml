@@ -12,14 +12,17 @@ classifiers=[
     'Intended Audience :: Developers',
     'License :: OSI Approved :: MIT License',
     'Natural Language :: English',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
 ]
 packages = [
     { include = "grugstream" },
 ]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.9"
 slist = "^0.1.0"
 
 [tool.black]

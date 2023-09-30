@@ -1,7 +1,7 @@
 # Getting started
 
 [![Build Status](https://github.com/thejaminator/grugstream/actions/workflows/main.yml/badge.svg)](https://github.com/thejaminator/grugstream/actions/workflows/main.yml)
-
+[![python](https://img.shields.io/pypi/pyversions/grugstream.svg)](https://pypi.org/project/grugstream)
 ```
 pip install grugstream
 ```
