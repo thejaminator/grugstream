@@ -233,8 +233,8 @@ class Observable(ABC, Generic[A_co]):
         async def async_iterator() -> AsyncIterable[str]:
             async with await anyio.open_file(file_path) as f:
                 async for line in f:
-                    print("Got line", line)
-                    yield line
+                    line_without_newline = line.rstrip('\n')
+                    yield line_without_newline
 
         return Observable.from_async_iterable(async_iterator())
 
@@ -1297,6 +1297,7 @@ class Observable(ABC, Generic[A_co]):
         """
 
         async def on_next(value: A_co) -> Acknowledgement:
+            # Only open file ONCE when first value is received
             async with await anyio.open_file(file_path, mode=mode) as file:
                 await file.write(serialize(value) + ('\n' if write_newline else ''))
             return Acknowledgement.ok

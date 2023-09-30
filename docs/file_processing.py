@@ -8,7 +8,7 @@ from tqdm import tqdm
 from grugstream import Observable
 
 
-async def fake_google_search(query: str) -> list[dict]:
+async def fake_google_search(query: str) -> list[dict[str, str]]:
     """
     Fake Google search that returns a list of results.
     """

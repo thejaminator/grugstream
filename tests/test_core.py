@@ -207,7 +207,7 @@ async def test_from_file(tmp_path: Path):
     # Run the observable and collect the output
     items = await observable.to_list()
 
-    expected_output = ["line1\n", "line2\n", "line3\n"]
+    expected_output = ["line1", "line2", "line3"]
     assert items == expected_output
 
 
@@ -226,6 +226,24 @@ async def test_to_file(tmp_path: Path):
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
     assert file_contents == test_data
+
+
+@pytest.mark.asyncio
+async def test_to_file_from_file(tmp_path: Path):
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
+    observable = Observable.from_iterable(test_data)
+
+    # Set up the output file path
+    file_path = tmp_path / Path("testfile.txt")
+
+    # Write to file
+    await observable.to_file(file_path)
+
+    # Create an observable from the file
+    new_observable = Observable.from_file(file_path)
+    new_list = await new_observable.to_list()
+    assert new_list == test_data
 
 
 @pytest.mark.asyncio
