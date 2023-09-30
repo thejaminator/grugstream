@@ -10,7 +10,10 @@ pip install grugstream
 See the [documentation](https://thejaminator.github.io/grugstream/)
 ## Introduction
 
-The grugstream library provides an easy way to work with asynchronous/ reactive / streaming programming in Python. It allows you to model and process asynchronous streams of events using non-blocking back-pressure.
+The grugstream library provides an easy way to work with asynchronous/ reactive / streaming programming in Python.
+
+Set up data processing pipelines that are faster, use less memory and are easy to understand. 
+
 Works with anyio - which means it works with asyncio and trio.
 
 This library is inspired by
