@@ -2,6 +2,10 @@
 
 [![Build Status](https://github.com/thejaminator/grugstream/actions/workflows/main.yml/badge.svg)](https://github.com/thejaminator/grugstream/actions/workflows/main.yml)
 
+```
+pip install grugstream
+```
+
 ## Introduction
 
 The grugstream library provides an easy way to work with asynchronous/ reactive / streaming programming in Python. It allows you to model and process asynchronous streams of events using non-blocking back-pressure.
