@@ -5,7 +5,7 @@ black
 anyio
 slist
 pydantic
-pytest - asyncio
+pytest-asyncio
 tqdm
 pre-commit
 mkdocs
