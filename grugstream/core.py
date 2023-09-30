@@ -16,10 +16,11 @@ from typing import (
     Protocol,
     Optional,
     Any,
+    IO,
 )
 
 import anyio
-from anyio import create_task_group, create_memory_object_stream, EndOfStream, CapacityLimiter
+from anyio import create_task_group, create_memory_object_stream, EndOfStream, CapacityLimiter, AsyncFile
 from anyio.abc import TaskGroup
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from slist import Slist
@@ -1300,6 +1301,37 @@ class Observable(ABC, Generic[A_co]):
             # Only open file ONCE when first value is received
             async with await anyio.open_file(file_path, mode=mode) as file:
                 await file.write(serialize(value) + ('\n' if write_newline else ''))
+            return Acknowledgement.ok
+
+        file_subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(file_subscriber)
+
+    async def to_opened_async_file(
+        self,
+        opened_file: AsyncFile[Any],
+        serialize: Callable[[A_co], str] = str,
+        write_newline: bool = True,
+    ) -> None:
+        """Writes to an already opened io / file, asynchronously"""
+
+        async def on_next(value: A_co) -> Acknowledgement:
+            await opened_file.write(serialize(value) + ('\n' if write_newline else ''))
+            return Acknowledgement.ok
+
+        file_subscriber = create_subscriber(on_next=on_next)
+
+        await self.subscribe(file_subscriber)
+
+    async def to_opened_file(
+        self,
+        opened_file: IO[Any],
+        write_newline: bool = True,
+    ) -> None:
+        """Writes to an already opened io / file."""
+
+        async def on_next(value: Any) -> Acknowledgement:
+            opened_file.write(value + ('\n' if write_newline else ''))
             return Acknowledgement.ok
 
         file_subscriber = create_subscriber(on_next=on_next)

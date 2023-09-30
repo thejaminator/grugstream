@@ -1,5 +1,6 @@
 import datetime
 import time
+from io import StringIO
 from pathlib import Path
 from typing import AsyncIterable, Iterable
 
@@ -225,6 +226,22 @@ async def test_to_file(tmp_path: Path):
 
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
+    assert file_contents == test_data
+
+
+@pytest.mark.asyncio
+async def test_to_opened_file():
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
+    observable = Observable.from_iterable(test_data)
+
+    stringio = StringIO()
+
+    # Write to file
+    await observable.to_opened_file(stringio)
+
+    # Check the file contents
+    file_contents = stringio.getvalue().splitlines()
     assert file_contents == test_data
 
 
