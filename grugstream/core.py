@@ -784,6 +784,9 @@ class Observable(ABC, Generic[A_co]):
         """Filter Observable to only emit distinct values.
 
         Items are compared directly for uniqueness.
+        Note that this requires items to implement __hash__.
+        This uses a set to track seen hashes, so it will use O(n) memory,
+        but should not be that much since it only stores hashes.
 
         Returns
         -------
@@ -803,6 +806,8 @@ class Observable(ABC, Generic[A_co]):
         """Filter Observable to only emit values with distinct keys.
 
         Items with different keys are considered distinct.
+        This uses a set to track seen hashes, so it will use O(n) memory,
+        but should not be that much since it only stores hashes.
 
         Parameters
         ----------
