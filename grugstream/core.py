@@ -233,6 +233,7 @@ class Observable(ABC, Generic[A_co]):
         async def async_iterator() -> AsyncIterable[str]:
             async with await anyio.open_file(file_path) as f:
                 async for line in f:
+                    print("Got line", line)
                     yield line
 
         return Observable.from_async_iterable(async_iterator())
