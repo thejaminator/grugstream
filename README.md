@@ -24,9 +24,9 @@ Also - everything is statically typed!
 ## Getting Started
 
 ### Basic Example
-Generally - what we always do is
+What we always do is
 1. Create an observable (A stream that is not running yet)
-2. Transform it with operators
+2. Transform it things like `map` or `filter`
 3. Run it. 
    - For example, `to_list` will run the observable and collect the results into a list.
    - `run_to_completion` will run the observable until it completes
@@ -98,7 +98,7 @@ anyio.run(main)
 ```
 
 ## Chaining other api calls
-Suppose you have multiple api calls to run.
+Suppose you have multiple api calls to run.  
 You  want all the api calls to be run in parallel with each other - 
 the items doing the 2nd api call don't need to wait for all the items for the 1st api call to complete.
 And maybe you want to stream to a file while it completes.
