@@ -493,10 +493,9 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> def slow_double(x):
-        >>>     await time.sleep(1)
+        >>>     time.sleep(1)
         >>>     return x * 2
-        >>> source = Observable.map_blocking_par(0.1).take(10)
-        >>> mapped = source.map_async_par(slow_double, max_par=3)
+        >>> mapped = Observable.map_blocking_par(slow_double).take(10)
         >>> await mapped.to_list() # runs ~3x faster due to parallel mapping
         [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
         """
