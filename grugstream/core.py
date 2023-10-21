@@ -477,7 +477,9 @@ class Observable(ABC, Generic[A_co]):
         """
         return self.map_async(lambda x: func(x[0], x[1]))
 
-    def map_blocking_par(self, func: Callable[[A_co], B_co], max_par: int = 50) -> 'Observable[B_co]':
+    def map_blocking_par(
+        self, func: Callable[[A_co], B_co], max_par: int = 50, max_buffer_size: int = 50
+    ) -> 'Observable[B_co]':
         """Map values blocking functions in parallel using func.
         Only use this for IO bound functions - e.g. old code that aren't async functions
 
@@ -487,6 +489,8 @@ class Observable(ABC, Generic[A_co]):
             blocking function to apply to each value.
         max_par : int, optional
             Max number of concurrent mappings.
+        max_buffer_size : int, optional
+            Max size of buffer for pending values.
 
         Returns
         -------
@@ -508,7 +512,7 @@ class Observable(ABC, Generic[A_co]):
         async def wrapped_func(value: A_co) -> B_co:
             return await to_thread.run_sync(func, value, limiter=limiter)
 
-        return self.map_async_par(wrapped_func, max_par=max_par)
+        return self.map_async_par(wrapped_func, max_par=max_par, max_buffer_size=max_buffer_size)
 
     def map_async_par(
         self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
