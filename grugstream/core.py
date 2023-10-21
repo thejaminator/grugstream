@@ -540,7 +540,7 @@ class Observable(ABC, Generic[A_co]):
         [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
         """
         source = self
-        send_stream, receive_stream = create_memory_object_stream[A_co](max_buffer_size=max_buffer_size)
+        send_stream, receive_stream = create_memory_object_stream(max_buffer_size=max_buffer_size)
 
         async def process_with_function(subscriber: Subscriber[B], tg: TaskGroup) -> None:
             semaphore = anyio.Semaphore(max_par)
