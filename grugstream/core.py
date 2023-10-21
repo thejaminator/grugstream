@@ -72,7 +72,7 @@ class Observable(ABC, Generic[A_co]):
     """
 
     def __init__(self) -> None:
-        self.file_handlers: dict[Path, AsyncFile[bytes]] = {}
+        self.file_handlers: dict[Path, AsyncFile[str]] = {}
 
     def from_one(self, value: A) -> "Observable[A]":
         """Create an Observable that emits a single value.
@@ -730,28 +730,30 @@ class Observable(ABC, Generic[A_co]):
             async def on_next(value: A_co) -> Acknowledgement:
                 if file_path not in source.file_handlers:
                     file = await anyio.open_file(file_path, mode=mode)
+                    source.file_handlers[file_path] = file
                 else:
                     file = source.file_handlers[file_path]
-                await file.write(serialize(value) + ('\n' if write_newline else ''))
+                write_str = serialize(value) + ('\n' if write_newline else '')
+                await file.write(write_str)
 
                 return await subscriber.on_next(value)
 
             async def on_error(error: Exception) -> None:
                 for file in source.file_handlers.values():
-                    await file.close()
+                    await file.aclose()
                 return await subscriber.on_error(error)
 
             async def on_completed() -> None:
                 for file in source.file_handlers.values():
-                    await file.close()
+                    await file.aclose()
                 return await subscriber.on_completed()
 
             new_subscriber = create_subscriber(on_next=on_next, on_error=on_error, on_completed=on_completed)
 
             await source.subscribe(new_subscriber)
 
-        class AnonObservable(Observable[A_co]):
-            async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+        class AnonObservable(Observable[A]):
+            async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 await subscribe(subscriber)
 
         return AnonObservable()
