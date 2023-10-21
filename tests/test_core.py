@@ -230,6 +230,23 @@ async def test_to_file(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_for_each_to_file(tmp_path: Path):
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
+    observable = Observable.from_iterable(test_data)
+
+    # Set up the output file path
+    file_path = tmp_path / "testfile.txt"
+
+    # Write to file
+    await observable.for_each_to_file(file_path).run_to_completion()
+
+    # Check the file contents
+    file_contents = file_path.read_text().splitlines()
+    assert file_contents == test_data
+
+
+@pytest.mark.asyncio
 async def test_to_opened_file():
     # Create some test data
     test_data = ["Hello", "world!", "This", "is", "a", "test."]

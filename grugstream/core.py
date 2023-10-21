@@ -71,6 +71,9 @@ class Observable(ABC, Generic[A_co]):
     Represents an asynchronous streaming sequence
     """
 
+    def __init__(self) -> None:
+        self.file_handlers: dict[Path, AsyncFile[bytes]] = {}
+
     def from_one(self, value: A) -> "Observable[A]":
         """Create an Observable that emits a single value.
 
@@ -721,11 +724,37 @@ class Observable(ABC, Generic[A_co]):
         # data.txt will contain '1\n2\n3\n'
         """
 
-        async def append_to_file(value: A_co) -> None:
-            async with await anyio.open_file(file_path, mode=mode) as file:
+        source = self
+
+        async def subscribe(subscriber: Subscriber[A_co]) -> None:
+            async def on_next(value: A_co) -> Acknowledgement:
+                if file_path not in source.file_handlers:
+                    file = await anyio.open_file(file_path, mode=mode)
+                else:
+                    file = source.file_handlers[file_path]
                 await file.write(serialize(value) + ('\n' if write_newline else ''))
 
-        return self.for_each_async(append_to_file)
+                return await subscriber.on_next(value)
+
+            async def on_error(error: Exception) -> None:
+                for file in source.file_handlers.values():
+                    await file.close()
+                return await subscriber.on_error(error)
+
+            async def on_completed() -> None:
+                for file in source.file_handlers.values():
+                    await file.close()
+                return await subscriber.on_completed()
+
+            new_subscriber = create_subscriber(on_next=on_next, on_error=on_error, on_completed=on_completed)
+
+            await source.subscribe(new_subscriber)
+
+        class AnonObservable(Observable[A_co]):
+            async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+                await subscribe(subscriber)
+
+        return AnonObservable()
 
     def for_each_async(self, func: Callable[[A_co], Awaitable[None]]) -> "Observable[A_co]":
         """Apply asynchronous func to each value.

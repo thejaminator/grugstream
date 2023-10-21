@@ -187,7 +187,6 @@ async def main():
         .print()
         .to_list()
     )
-    print("done")
 
     await stage_one_cache.async_write_to_path()
 
