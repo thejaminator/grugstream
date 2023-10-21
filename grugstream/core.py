@@ -725,6 +725,8 @@ class Observable(ABC, Generic[A_co]):
         """
 
         source = self
+        # need a lock to prevent multiple awaitable when it isn't ok to write yet
+        can_write = anyio.Semaphore(1)
 
         async def subscribe(subscriber: Subscriber[A_co]) -> None:
             async def on_next(value: A_co) -> Acknowledgement:
@@ -733,18 +735,21 @@ class Observable(ABC, Generic[A_co]):
                     source.file_handlers[file_path] = file
                 else:
                     file = source.file_handlers[file_path]
-                write_str = serialize(value) + ('\n' if write_newline else '')
-                await file.write(write_str)
+                async with can_write:
+                    write_str = serialize(value) + ('\n' if write_newline else '')
+                    await file.write(write_str)
 
                 return await subscriber.on_next(value)
 
             async def on_error(error: Exception) -> None:
-                for file in source.file_handlers.values():
+                file = source.file_handlers.get(file_path)
+                if file is not None:
                     await file.aclose()
                 return await subscriber.on_error(error)
 
             async def on_completed() -> None:
-                for file in source.file_handlers.values():
+                file = source.file_handlers.get(file_path)
+                if file is not None:
                     await file.aclose()
                 return await subscriber.on_completed()
 
@@ -1327,15 +1332,35 @@ class Observable(ABC, Generic[A_co]):
         >>> await obs.to_file('data.txt')
         """
 
+        # lock to prevent multiple awaitables from writing at the same time
+        can_write = anyio.Semaphore(1)
+
         async def on_next(value: A_co) -> Acknowledgement:
             # Only open file ONCE when first value is received
-            async with await anyio.open_file(file_path, mode=mode) as file:
+            if file_path not in self.file_handlers:
+                file = await anyio.open_file(file_path, mode=mode)
+                self.file_handlers[file_path] = file
+            else:
+                file = self.file_handlers[file_path]
+            async with can_write:
                 await file.write(serialize(value) + ('\n' if write_newline else ''))
             return Acknowledgement.ok
 
-        file_subscriber = create_subscriber(on_next=on_next)
+        async def on_error(error: Exception) -> None:
+            file = self.file_handlers.get(file_path)
+            if file is not None:
+                await file.aclose()
+            raise error
 
-        await self.subscribe(file_subscriber)
+        async def on_completed() -> None:
+            file = self.file_handlers.get(file_path)
+            if file is not None:
+                await file.aclose()
+            return None
+
+        new_subscriber = create_subscriber(on_next=on_next, on_error=on_error, on_completed=on_completed)
+
+        await self.subscribe(new_subscriber)
 
     async def to_opened_async_file(
         self,
@@ -1345,8 +1370,11 @@ class Observable(ABC, Generic[A_co]):
     ) -> None:
         """Writes to an already opened io / file, asynchronously"""
 
+        can_write = anyio.Semaphore(1)
+
         async def on_next(value: A_co) -> Acknowledgement:
-            await opened_file.write(serialize(value) + ('\n' if write_newline else ''))
+            async with can_write:
+                await opened_file.write(serialize(value) + ('\n' if write_newline else ''))
             return Acknowledgement.ok
 
         file_subscriber = create_subscriber(on_next=on_next)
