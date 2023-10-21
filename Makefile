@@ -9,5 +9,4 @@ check: hooks
 	SKIP=no-commit-to-branch pre-commit run -a --hook-stage commit
 
 .PHONY: env
-env: check-python
-	pip install -r requirements.txt
+env: pip install -r requirements.txt
