@@ -24,6 +24,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.9"
 slist = "^0.1.0"
+anyio = "^3.3.0"
 
 [tool.black]
 line-length = 120

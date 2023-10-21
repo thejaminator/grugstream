@@ -1049,7 +1049,7 @@ class Observable(ABC, Generic[A_co]):
         [0, 1, 2] # emitted at 1 second intervals
         """
         source = self
-        send_stream, receive_stream = create_memory_object_stream[A](max_buffer_size=max_buffer_size)  # type: ignore
+        send_stream, receive_stream = create_memory_object_stream(max_buffer_size=max_buffer_size)  # type: ignore
 
         class ThrottledObservable(Observable[A]):
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
