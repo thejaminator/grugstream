@@ -227,11 +227,9 @@ async def test_from_file_two_obs(tmp_path: Path):
     expected_output = ["line1", "line2", "line3"]
     assert items == expected_output
 
-    # Expected failure, because the file has already been read, oops
-    with pytest.raises(AssertionError):
-        # Run the observable again
-        items_again = await observable.to_list()
-        assert items_again == expected_output
+    # Run the observable again
+    items_again = await observable.to_list()
+    assert items_again == expected_output
 
 
 @pytest.mark.asyncio

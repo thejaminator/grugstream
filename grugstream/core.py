@@ -171,6 +171,49 @@ class Observable(ABC, Generic[A_co]):
         return IterableObservable()
 
     @staticmethod
+    def from_iterable_thunk(thunk: Callable[[], Iterable[A]]) -> "Observable[A]":
+        """Create an Observable from a thunk that returns an iterable.
+        This is useful if you want to re-evaluate the iterable each time.
+        For example, generators can only be iterated once, so you can use this to
+        re-evaluate the generator each time.
+
+        Parameters
+        ----------
+        thunk : Callable
+            The iterable source to convert to an Observable
+
+        Returns
+        -------
+        Observable
+            An Observable emitting the values from the iterable
+
+        Examples
+        --------
+
+        def gen():
+            for i in range(3):
+                yield i
+
+        >>> obs = Observable.from_iterable_thunk(lambda: [1, 2, 3])
+        >>> await obs.to_list()
+        [1, 2, 3]
+        >>> await obs.to_list() # can be called multiple times, each time it will re-evaluate the thunk
+        [1, 2, 3]
+        """
+
+        class IterableObservable(Observable[A]):  # type: ignore
+            async def subscribe(self, subscriber: Subscriber[A]) -> None:
+                iterable_ = thunk()
+                ack = Acknowledgement.ok
+                for item in iterable_:
+                    if ack != Acknowledgement.ok:  # If not OK, then stop.
+                        break
+                    ack = await subscriber.on_next(item)
+                await subscriber.on_completed()
+
+        return IterableObservable()
+
+    @staticmethod
     def from_async_iterable(iterable: AsyncIterable[A]) -> "Observable[A]":
         """Create an Observable from an asynchronous iterable.
 
@@ -198,6 +241,47 @@ class Observable(ABC, Generic[A_co]):
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 ack = Acknowledgement.ok
                 async for item in iterable:
+                    if ack != Acknowledgement.ok:
+                        break
+                    ack = await subscriber.on_next(item)
+                await subscriber.on_completed()
+
+        return AsyncIterableObservable()
+
+    @staticmethod
+    def from_async_iterable_thunk(thunk: Callable[[], AsyncIterable[A]]) -> "Observable[A]":
+        """Create an Observable from a thunk that returns an iterable.
+        This is useful if you want to re-evaluate the iterable each time.
+        For example, generators can only be iterated once, so you can use this to
+        re-evaluate the generator each time.
+
+        Parameters
+        ----------
+        thunk : Callable
+            The asynchronous iterable to convert to an Observable.
+
+        Returns
+        -------
+        Observable
+            An Observable emitting values from the async iterable.
+
+        Examples
+        --------
+        >>> async def gen():
+        >>>     yield 1
+        >>>     yield 2
+        >>> obs = Observable.from_async_iterable_thunk(lambda: gen())
+        >>> await obs.to_list()
+        [1, 2]
+        >>> await obs.to_list() # can be called multiple times, each time it will re-evaluate the thunk
+        [1, 2]
+        """
+
+        class AsyncIterableObservable(Observable[A]):  # type: ignore
+            async def subscribe(self, subscriber: Subscriber[A]) -> None:
+                generator = thunk()
+                ack = Acknowledgement.ok
+                async for item in generator:
                     if ack != Acknowledgement.ok:
                         break
                     ack = await subscriber.on_next(item)
@@ -241,7 +325,7 @@ class Observable(ABC, Generic[A_co]):
                     line_without_newline = line.rstrip('\n')
                     yield line_without_newline
 
-        return Observable.from_async_iterable(async_iterator())
+        return Observable.from_async_iterable_thunk(lambda: async_iterator())
 
     @staticmethod
     def from_interval(seconds: float) -> 'Observable[int]':
