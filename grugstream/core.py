@@ -1080,11 +1080,13 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def flatten_observable(self: 'Observable[Observable[B_co]]') -> 'Observable[B_co]':
+    def flatten_observable_sequential(self: 'Observable[Observable[B_co]]') -> 'Observable[B_co]':
         """Flatten Observable of Observables into one Observable.
 
         Flattens an Observable emitting other Observables, into a single
         Observable emitting all the values from the nested Observables.
+        Note that this outputs values from the nested Observables in
+        sequential order.
 
         Returns
         -------
@@ -1117,6 +1119,52 @@ class Observable(ABC, Generic[A_co]):
             )
 
             await self.subscribe(flatten_subscriber)
+
+        return create_observable(subscribe_async)
+
+    def flatten_observable(self: 'Observable[Observable[B_co]]') -> 'Observable[B_co]':
+        """Flatten Observable of Observables into one Observable.
+
+        Flattens an Observable emitting other Observables, into a single
+        Observable emitting all the values from the nested Observables.
+        Note that this will try to emit values from the nested Observables
+        concurrently.
+
+
+        Returns
+        -------
+        Observable[B]
+            Observable emitting all values from nested Observables.
+
+        Examples
+        --------
+        >>> obs1 = Observable.from_iterable([1, 2])
+        >>> obs2 = Observable.from_iterable([3, 4])
+        >>> outer = Observable.from_iterable([obs1, obs2])
+        >>> flattened = outer.flatten_observable()
+        >>> await flattened.to_list()
+        [1, 2, 3, 4]
+        """
+        async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
+            async with create_task_group() as tg:
+
+                async def inner_on_next(value: B_co) -> Acknowledgement:
+                    return await subscriber.on_next(value)
+
+                async def outer_on_next(inner_observable: Observable[B_co]) -> Acknowledgement:
+                    tg.start_soon(
+                        inner_observable.subscribe,
+                        create_subscriber(
+                            on_next=inner_on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+                        ),
+                    )
+                    return Acknowledgement.ok
+
+                await self.subscribe(
+                    create_subscriber(
+                        on_next=outer_on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+                    )
+                )
 
         return create_observable(subscribe_async)
 

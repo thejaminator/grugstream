@@ -40,6 +40,48 @@ async def test_map():
 
 
 @pytest.mark.asyncio
+async def test_flatten_observable_sequential():
+    obs1 = Observable.from_iterable([1, 2])
+    obs2 = Observable.from_iterable([3, 4])
+    outer = Observable.from_iterable([obs1, obs2])
+    flattened = outer.flatten_observable_sequential()
+    items = await flattened.to_list()
+    assert items == [1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_flatten_observable_sequential_three():
+    obs1 = Observable.from_iterable([1, 2])
+    obs2 = Observable.from_iterable([3, 4])
+    obs3 = Observable.from_iterable([5, 6])
+    outer = Observable.from_iterable([obs1, obs2, obs3])
+    flattened = outer.flatten_observable_sequential()
+    items = await flattened.to_list()
+    assert items == [1, 2, 3, 4, 5, 6]
+
+
+@pytest.mark.asyncio
+async def test_flatten_observable():
+    obs1 = Observable.from_iterable([1, 2])
+    obs2 = Observable.from_iterable([3, 4])
+    obs3 = Observable.from_iterable([5, 6])
+    outer = Observable.from_iterable([obs1, obs2, obs3])
+    flattened = outer.flatten_observable()
+    items = await flattened.to_list()
+    assert items == [1, 2, 3, 4, 5, 6]
+
+
+@pytest.mark.asyncio
+async def test_flatten_observable_timed():
+    obs1 = Observable.from_repeat("a", seconds=0.01)
+    obs2 = Observable.from_repeat("b", seconds=100)
+    outer = Observable.from_iterable([obs1, obs2])
+    flattened = outer.flatten_observable().take(15)
+    items = await flattened.to_list()
+    assert items == ["a"] * 10 + ["b"]
+
+
+@pytest.mark.asyncio
 async def test_map_async():
     async def multiply_by_two(x: int) -> int:
         await anyio.sleep(0.1)
