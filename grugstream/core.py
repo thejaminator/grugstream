@@ -96,7 +96,8 @@ class Observable(ABC, Generic[A_co]):
         """
         return self.from_iterable([value])
 
-    def from_empty(self) -> "Observable[A]":  # type: ignore
+    @classmethod
+    def from_empty(cls) -> "Observable[A]":  # type: ignore
         """Create an empty Observable that emits no items.
 
         Returns
@@ -110,7 +111,7 @@ class Observable(ABC, Generic[A_co]):
         >>> await obs.to_list()
         []
         """
-        return self.from_iterable([])
+        return cls.from_iterable([])
 
     def from_one_option(self, value: A | None) -> "Observable[A]":
         """Create an Observable emitting value if not None.

@@ -213,6 +213,28 @@ async def test_from_file(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_from_file_two_obs(tmp_path: Path):
+    # Create a test file
+    file_path = tmp_path / "testfile.txt"
+    file_path.write_text("line1\nline2\nline3\n")
+
+    # Create an observable from the file
+    observable = Observable.from_file(file_path)
+
+    # Run the observable and collect the output
+    items = await observable.to_list()
+
+    expected_output = ["line1", "line2", "line3"]
+    assert items == expected_output
+
+    # Expected failure, because the file has already been read, oops
+    with pytest.raises(AssertionError):
+        # Run the observable again
+        items_again = await observable.to_list()
+        assert items_again == expected_output
+
+
+@pytest.mark.asyncio
 async def test_to_file(tmp_path: Path):
     # Create some test data
     test_data = ["Hello", "world!", "This", "is", "a", "test."]
@@ -299,6 +321,38 @@ async def test_run_until_timeout():
 async def test_run_to_completion():
     result: int = await Observable.from_repeat("1", 0.01).take(10).run_to_completion()
     assert result == 10
+
+
+@pytest.mark.asyncio
+async def test_run_to_completion_two_streams():
+    obs = Observable.from_repeat("1", 0.01).take(10)
+    first_result: int = await obs.run_to_completion()
+    second_result: int = await obs.run_to_completion()
+    assert first_result == 10
+    assert second_result == 10
+
+
+@pytest.mark.asyncio
+async def test_from_list_two_streams():
+    obs = Observable.from_iterable([1, 2, 3, 4, 5])
+    first_result: int = await obs.run_to_completion()
+    second_result: int = await obs.run_to_completion()
+    assert first_result == 5
+    assert second_result == 5
+
+
+@pytest.mark.asyncio
+async def test_from_generator_two_streams():
+    async def gen():
+        for i in range(5):
+            yield i
+
+    obs = Observable.from_async_iterable(gen())
+    first_result: int = await obs.run_to_completion()
+    second_result: int = await obs.run_to_completion()
+    assert first_result == 5
+    # second result should be 0 because the generator is exhausted
+    assert second_result == 0
 
 
 @pytest.mark.asyncio
