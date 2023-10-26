@@ -90,9 +90,6 @@ async def test_flatten_observable_timed():
     assert len([item for item in items if item == "b"]) == 1
 
 
-
-
-
 @pytest.mark.asyncio
 async def test_map_async():
     async def multiply_by_two(x: int) -> int:

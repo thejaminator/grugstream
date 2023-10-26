@@ -1032,21 +1032,7 @@ class Observable(ABC, Generic[A_co]):
         [1, 2]
         """
 
-        async def subscribe_async(subscriber: Subscriber[A]) -> None:
-            async def on_next(iterable: AsyncIterable[A]) -> Acknowledgement:
-                async for item in iterable:
-                    ack = await subscriber.on_next(item)
-                    if ack == Acknowledgement.stop:
-                        return Acknowledgement.stop
-                return Acknowledgement.ok
-
-            flatten_subscriber = create_subscriber(
-                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
-            )
-
-            await self.subscribe(flatten_subscriber)
-
-        return create_observable(subscribe_async)
+        return self.map(Observable.from_async_iterable).flatten_observable()
 
     def flatten_optional(self: 'Observable[A | None]') -> 'Observable[A]':
         """Flatten an Observable of Optional values into an Observable of present values.
