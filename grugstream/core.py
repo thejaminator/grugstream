@@ -593,7 +593,7 @@ class Observable(ABC, Generic[A_co]):
         return self.map_async(lambda x: func(x[0], x[1]))
 
     def map_blocking_par(
-        self, func: Callable[[A_co], B_co], max_par: int = 50, max_buffer_size: int = 50
+        self, func: Callable[[A_co], B_co], max_par: int | CapacityLimiter = 50, max_buffer_size: int = 50
     ) -> 'Observable[B_co]':
         """Map values blocking functions in parallel using func.
         Only use this for IO bound functions - e.g. old code that aren't async functions
@@ -621,7 +621,7 @@ class Observable(ABC, Generic[A_co]):
         >>> await mapped.to_list() # runs ~3x faster due to parallel mapping
         [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
         """
-        limiter = CapacityLimiter(max_par)
+        limiter: CapacityLimiter = max_par if isinstance(max_par, CapacityLimiter) else CapacityLimiter(max_par)
         from anyio import to_thread
 
         async def wrapped_func(value: A_co) -> B_co:
@@ -630,7 +630,7 @@ class Observable(ABC, Generic[A_co]):
         return self.map_async_par(wrapped_func, max_par=max_par, max_buffer_size=max_buffer_size)
 
     def map_async_par(
-        self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
+        self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int | CapacityLimiter = 50
     ) -> 'Observable[B]':
         """Map values asynchronously in parallel using func.
 
