@@ -126,6 +126,21 @@ async def test_map_async_par():
 
 
 @pytest.mark.asyncio
+async def test_map_async_par_two_obs():
+    async def multiply_by_two(x: int) -> int:
+        await anyio.sleep(0.1)
+        return x * 2
+
+    observable = Observable.from_iterable([1, 2, 3])
+    mapped = observable.map_async_par(multiply_by_two)
+    items = await mapped.to_list()
+    assert items == [2, 4, 6]
+
+    items_again = await mapped.to_list()
+    assert items_again == [2, 4, 6]
+
+
+@pytest.mark.asyncio
 async def test_map_async_par_timed():
     async def multiply_by_two(x: int) -> int:
         await anyio.sleep(0.1)

@@ -659,9 +659,10 @@ class Observable(ABC, Generic[A_co]):
         [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
         """
         source = self
-        send_stream, receive_stream = create_memory_object_stream(max_buffer_size=max_buffer_size)
 
-        async def process_with_function(subscriber: Subscriber[B], tg: TaskGroup) -> None:
+        async def process_with_function(
+            subscriber: Subscriber[B], tg: TaskGroup, receive_stream: MemoryObjectReceiveStream[B]
+        ) -> None:
             semaphore = anyio.Semaphore(max_par)
 
             async def process_item(item: A_co) -> None:
@@ -675,6 +676,7 @@ class Observable(ABC, Generic[A_co]):
                 tg.start_soon(process_item, item)
 
         async def subscribe_async(subscriber: Subscriber[B]) -> None:
+            send_stream, receive_stream = create_memory_object_stream(max_buffer_size=max_buffer_size)
             try:
 
                 async def on_next(value: A_co) -> Acknowledgement:
@@ -688,7 +690,7 @@ class Observable(ABC, Generic[A_co]):
 
                 async with create_task_group() as tg:
                     tg.start_soon(source.subscribe, send_to_stream_subscriber)
-                    tg.start_soon(process_with_function, subscriber, tg)
+                    tg.start_soon(process_with_function, subscriber, tg, receive_stream)
                 await subscriber.on_completed()
 
             except Exception as e:
