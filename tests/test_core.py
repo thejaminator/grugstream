@@ -40,6 +40,17 @@ async def test_map():
 
 
 @pytest.mark.asyncio
+async def test_from_awaitable():
+    async def some_awaitable():
+        await anyio.sleep(0.1)
+        return 1
+
+    observable = Observable.from_awaitable(some_awaitable())
+    items = await observable.to_list()
+    assert items == [1]
+
+
+@pytest.mark.asyncio
 async def test_flatten_observable_sequential():
     obs1 = Observable.from_iterable([1, 2])
     obs2 = Observable.from_iterable([3, 4])

@@ -97,6 +97,36 @@ class Observable(ABC, Generic[A_co]):
         return self.from_iterable([value])
 
     @classmethod
+    def from_awaitable(cls, awaitable: Awaitable[A]) -> "Observable[A]":
+        """Create an Observable from an awaitable.
+
+        Parameters
+        ----------
+        awaitable :
+            The awaitable to convert to an Observable.
+
+        Returns
+        -------
+        Observable
+            An Observable emitting the value from the awaitable.
+
+        Examples
+        --------
+        >>> async def get_value():
+        >>>     return 10
+        >>> obs = Observable.from_awaitable(get_value())
+        >>> await obs.to_list()
+        [10]
+        """
+
+        async def subscribe(subscriber: Subscriber[A]) -> None:
+            value = await awaitable
+            await subscriber.on_next(value)
+            await subscriber.on_completed()
+
+        return create_observable(subscribe)
+
+    @classmethod
     def from_empty(cls) -> "Observable[A]":  # type: ignore
         """Create an empty Observable that emits no items.
 
