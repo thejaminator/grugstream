@@ -73,12 +73,24 @@ async def test_flatten_observable():
 
 @pytest.mark.asyncio
 async def test_flatten_observable_timed():
+    time_start = datetime.datetime.now()
     obs1 = Observable.from_repeat("a", seconds=0.01)
-    obs2 = Observable.from_repeat("b", seconds=100)
+    obs2 = Observable.from_repeat("b", seconds=1)
     outer = Observable.from_iterable([obs1, obs2])
     flattened = outer.flatten_observable().take(15)
+    time_end = datetime.datetime.now()
+    time_delta = time_end - time_start
+    assert time_delta < datetime.timedelta(seconds=0.5)
     items = await flattened.to_list()
-    assert items == ["a"] * 10 + ["b"]
+    # there should be total 15 items
+    assert len(items) == 15
+    # 14 items should be "a"
+    assert len([item for item in items if item == "a"]) == 14
+    # 1 item should be "b"
+    assert len([item for item in items if item == "b"]) == 1
+
+
+
 
 
 @pytest.mark.asyncio

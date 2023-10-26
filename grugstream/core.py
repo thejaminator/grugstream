@@ -1145,26 +1145,24 @@ class Observable(ABC, Generic[A_co]):
         >>> await flattened.to_list()
         [1, 2, 3, 4]
         """
+
         async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
-            async with create_task_group() as tg:
+            async def subscribe_inner(inner_observable: Observable[B_co]) -> None:
+                async def on_next(value: B_co) -> Acknowledgement:
+                    ack = await subscriber.on_next(value)
+                    if ack == Acknowledgement.stop:
+                        tg.cancel_scope.cancel()
+                    return ack
 
-                async def inner_on_next(value: B_co) -> Acknowledgement:
-                    return await subscriber.on_next(value)
+                async def on_error(e: Exception) -> None:
+                    tg.cancel_scope.cancel()
+                    await subscriber.on_error(e)
 
-                async def outer_on_next(inner_observable: Observable[B_co]) -> Acknowledgement:
-                    tg.start_soon(
-                        inner_observable.subscribe,
-                        create_subscriber(
-                            on_next=inner_on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
-                        ),
-                    )
-                    return Acknowledgement.ok
+                await inner_observable.subscribe(create_subscriber(on_next=on_next, on_error=on_error))
 
-                await self.subscribe(
-                    create_subscriber(
-                        on_next=outer_on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
-                    )
-                )
+            async with anyio.create_task_group() as tg:
+                async for inner_observable in self.to_async_iterable():
+                    tg.start_soon(subscribe_inner, inner_observable)
 
         return create_observable(subscribe_async)
 
