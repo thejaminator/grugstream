@@ -1284,7 +1284,7 @@ class Observable(ABC, Generic[A_co]):
         """
         return self.for_each(lambda x: printer(f"{prefix}{x}"))  # type: ignore
 
-    def tqdm(self, tqdm_bar: Optional[tqdm]) -> 'Observable[A_co]':  # type: ignore
+    def tqdm(self, tqdm_bar: Optional[tqdm] = None) -> 'Observable[A_co]':  # type: ignore
         """Wrap the Observable with a tqdm progress bar.
 
         Parameters
