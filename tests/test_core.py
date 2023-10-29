@@ -1,8 +1,9 @@
+from collections import Counter
 import datetime
 import time
 from io import StringIO
 from pathlib import Path
-from typing import AsyncIterable, Iterable
+from typing import AsyncIterable, Iterable, Any
 
 import anyio
 import pytest
@@ -37,6 +38,26 @@ async def test_map():
     mapped = observable.map(lambda x: x * 2)
     items = await mapped.to_list()
     assert items == [2, 4, 6]
+
+
+@pytest.mark.asyncio
+async def test_for_each_counter():
+    observable = Observable.from_iterable([1, 2, 3])
+    counter = Counter()
+    mapped = observable.for_each_count(counter)
+    items = await mapped.to_list()
+    assert items == [1, 2, 3]
+    assert counter["count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_for_each_counter_identity():
+    observable = Observable.from_iterable([1, 2, 3])
+    counter = Counter()
+    mapped = observable.for_each_count(counter, key=lambda x: x)
+    items = await mapped.to_list()
+    assert items == [1, 2, 3]
+    assert counter[1] == 1
 
 
 @pytest.mark.asyncio
@@ -170,6 +191,46 @@ async def test_map_blocking_par():
     time_end = datetime.datetime.now()
     time_delta = time_end - time_start
     assert time_delta < datetime.timedelta(seconds=0.5)
+
+
+@pytest.mark.asyncio
+async def test_source_many_subscribes():
+    counter = 0
+
+    def count(not_used: Any) -> None:
+        nonlocal counter
+        counter += 1
+
+    source = Observable.from_iterable([1, 2, 3, 4, 5]).for_each(count)
+    await source.map(lambda x: "ok").to_list()
+    await source.to_list()
+    assert counter == 10
+
+
+@pytest.mark.asyncio
+async def test_map_blocking_par_many():
+    def multiply_by_two(x: int) -> int:
+        time.sleep(0.1)
+        return x * 2
+
+    def multiply_by_4(x: int) -> int:
+        time.sleep(0.1)
+        return x * 4
+
+    def multiply_by_3(x: int) -> int:
+        time.sleep(0.1)
+        return x * 3
+
+    observable = Observable.from_interval(0.01).take(10)
+    mapped = observable.map_blocking_par(multiply_by_two, max_par=10)
+    mapped_again = observable.map_blocking_par(multiply_by_4, max_par=10)
+    mapped_3 = observable.map_blocking_par(multiply_by_3, max_par=10)
+    items = await mapped.to_list()
+    assert items == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    items_again = await mapped_again.to_list()
+    assert items_again == [0, 4, 8, 12, 16, 20, 24, 28, 32, 36]
+    items_3 = await mapped_3.to_list()
+    assert items_3 == [0, 3, 6, 9, 12, 15, 18, 21, 24, 27]
 
 
 @pytest.mark.asyncio

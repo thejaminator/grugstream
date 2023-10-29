@@ -17,6 +17,7 @@ from typing import (
     Optional,
     Any,
     IO,
+    Counter,
 )
 
 import anyio
@@ -627,10 +628,10 @@ class Observable(ABC, Generic[A_co]):
         async def wrapped_func(value: A_co) -> B_co:
             return await to_thread.run_sync(func, value, limiter=limiter)
 
-        return self.map_async_par(wrapped_func, max_par=max_par, max_buffer_size=max_buffer_size)
+        return self.map_async_par(wrapped_func, max_par=int(limiter.total_tokens), max_buffer_size=max_buffer_size)
 
     def map_async_par(
-        self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int | CapacityLimiter = 50
+        self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
     ) -> 'Observable[B]':
         """Map values asynchronously in parallel using func.
 
@@ -699,6 +700,38 @@ class Observable(ABC, Generic[A_co]):
                 await send_stream.aclose()
 
         return create_observable(subscribe_async)
+
+    def for_each_count(
+        self, counter: Counter[Any], key: Callable[[A_co], CanHash] = lambda x: "count"
+    ) -> "Observable[A_co]":
+        """Increment counter for each value.
+
+        Parameters
+        ----------
+        counter : Counter
+            The counter to increment.
+        key : Callable, optional
+            Function to get the key to increment, by default lambda x: x['count']
+
+        Returns
+        -------
+        Observable
+            Output Observable with values unchanged.
+
+        Examples
+        --------
+        >>> counter = Counter()
+        >>> obs = Observable.from_iterable([1,2,3])
+        >>> obs.for_each_count(counter).run_to_completion()
+        >>> counter
+        Counter({"count": 1})
+        """
+
+        def counter_update(ele: A_co):
+            counter_key = key(ele)
+            counter[counter_key] += 1
+
+        return self.for_each(counter_update)
 
     def for_each(self, func: Callable[[A_co], None]) -> "Observable[A_co]":
         """Apply func to each value but don't modify stream.
