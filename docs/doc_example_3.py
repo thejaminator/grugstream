@@ -38,7 +38,7 @@ async def main():
     )
 
     # Write the results to a file
-    await observable.take(100).to_file(Path("results.txt"))
+    await observable.take(100).run_to_file(Path("results.txt"))
 
 
 anyio.run(main)

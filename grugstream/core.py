@@ -91,7 +91,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_one(10)
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [10]
 
         """
@@ -116,7 +116,7 @@ class Observable(ABC, Generic[A_co]):
         >>> async def get_value():
         >>>     return 10
         >>> obs = Observable.from_awaitable(get_value())
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [10]
         """
 
@@ -139,7 +139,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_empty()
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         []
         """
         return cls.from_iterable([])
@@ -160,11 +160,11 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_one_option(10)
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [10]
 
         >>> obs = Observable.from_one_option(None)
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         []
         """
         return self.from_iterable([value]) if value is not None else self.from_iterable([])
@@ -186,7 +186,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [1, 2, 3]
         """
 
@@ -226,9 +226,9 @@ class Observable(ABC, Generic[A_co]):
                 yield i
 
         >>> obs = Observable.from_iterable_thunk(lambda: [1, 2, 3])
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [1, 2, 3]
-        >>> await obs.to_list() # can be called multiple times, each time it will re-evaluate the thunk
+        >>> await obs.run_to_list() # can be called multiple times, each time it will re-evaluate the thunk
         [1, 2, 3]
         """
 
@@ -264,7 +264,7 @@ class Observable(ABC, Generic[A_co]):
         >>>     yield 1
         >>>     yield 2
         >>> obs = Observable.from_async_iterable(gen())
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [1, 2]
         """
 
@@ -302,9 +302,9 @@ class Observable(ABC, Generic[A_co]):
         >>>     yield 1
         >>>     yield 2
         >>> obs = Observable.from_async_iterable_thunk(lambda: gen())
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [1, 2]
-        >>> await obs.to_list() # can be called multiple times, each time it will re-evaluate the thunk
+        >>> await obs.run_to_list() # can be called multiple times, each time it will re-evaluate the thunk
         [1, 2]
         """
 
@@ -346,7 +346,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_file('data.txt')
-        >>> await obs.take(3).to_list()
+        >>> await obs.take(3).run_to_list()
         ['line1', 'line2', 'line3']
         """
 
@@ -378,7 +378,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_interval(1.0)
-        >>> await obs.take(3).to_list()
+        >>> await obs.take(3).run_to_list()
         [0, 1, 2]
         """
 
@@ -425,7 +425,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable(['a', 'b', 'c'])
         >>> enumerated = obs.enumerated()
-        >>> await enumerated.to_list()
+        >>> await enumerated.run_to_list()
         [(0, 'a'), (1, 'b'), (2, 'c')]
 
         """
@@ -467,7 +467,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> mapped = await obs.map(lambda x: x * 2).to_list()
+        >>> mapped = await obs.map(lambda x: x * 2).run_to_list()
         >>> mapped
         [2, 4, 6]
         """
@@ -503,7 +503,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable(['a', 'b', 'c'])
         >>> mapped = obs.map_enumerated(lambda i, x: str(i) + x)
-        >>> await mapped.to_list()
+        >>> await mapped.run_to_list()
         ['0a', '1b', '2c']
         """
         return self.enumerated().map_2(func)
@@ -525,7 +525,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([(1, 'a'), (2, 'b')])
         >>> mapped = obs.map_2(lambda x, y: (x, y.upper()))
-        >>> await mapped.to_list()
+        >>> await mapped.run_to_list()
         [(1, 'A'), (2, 'B')]
         """
         return self.map(lambda x: func(x[0], x[1]))
@@ -550,7 +550,7 @@ class Observable(ABC, Generic[A_co]):
         >>>     return x * 2
         >>> obs = Observable.from_iterable([1, 2, 3])
         >>> mapped = obs.map_async(double)
-        >>> await mapped.to_list()
+        >>> await mapped.run_to_list()
         [2, 4, 6]
         """
         source = self
@@ -588,7 +588,7 @@ class Observable(ABC, Generic[A_co]):
         >>>     return f'{x}.{y}'
         >>> obs = Observable.from_iterable([('a', 1), ('b', 2)])
         >>> mapped = obs.map_2_async(concat)
-        >>> await mapped.to_list()
+        >>> await mapped.run_to_list()
         ['a.1', 'b.2']
         """
         return self.map_async(lambda x: func(x[0], x[1]))
@@ -619,7 +619,7 @@ class Observable(ABC, Generic[A_co]):
         >>>     time.sleep(1)
         >>>     return x * 2
         >>> mapped = Observable.map_blocking_par(slow_double).take(10)
-        >>> await mapped.to_list() # runs ~3x faster due to parallel mapping
+        >>> await mapped.run_to_list() # runs ~3x faster due to parallel mapping
         [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
         """
         limiter: CapacityLimiter = max_par if isinstance(max_par, CapacityLimiter) else CapacityLimiter(max_par)
@@ -656,7 +656,7 @@ class Observable(ABC, Generic[A_co]):
         >>>     return x * 2
         >>> source = Observable.interval(0.1).take(10)
         >>> mapped = source.map_async_par(slow_double, max_par=3)
-        >>> await mapped.to_list() # runs ~3x faster due to parallel mapping
+        >>> await mapped.run_to_list() # runs ~3x faster due to parallel mapping
         [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
         """
         source = self
@@ -749,7 +749,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> obs.for_each(print).to_list()
+        >>> obs.for_each(print).run_to_list()
         1
         2
         3
@@ -778,7 +778,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable(['a', 'b', 'c'])
-        >>> obs.for_each_enumerated(lambda i, x: print(f'{i}: {x}')).to_list()
+        >>> obs.for_each_enumerated(lambda i, x: print(f'{i}: {x}')).run_to_list()
         0: a
         1: b
         2: c
@@ -808,7 +808,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> my_list = []
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> obs.for_each_to_list(my_list).to_list()
+        >>> obs.for_each_to_list(my_list).run_to_list()
         [1, 2, 3]
         >>> my_list
         [1, 2, 3]
@@ -937,7 +937,7 @@ class Observable(ABC, Generic[A_co]):
         >>>     print(x)
         >>>
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> obs.for_each_async(print_delayed).to_list()
+        >>> obs.for_each_async(print_delayed).run_to_list()
         1    # printed after 1 second
         2    # printed after 1 more second
         3
@@ -967,7 +967,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([1, 2, 3, 4])
         >>> filtered = obs.filter(lambda x: x % 2 == 0)
-        >>> await filtered.to_list()
+        >>> await filtered.run_to_list()
         [2, 4]
 
         """
@@ -990,7 +990,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([1, 2, 2, 3, 3, 1])
         >>> distinct = obs.distinct()
-        >>> await distinct.to_list()
+        >>> await distinct.run_to_list()
         [1, 2, 3]
         """
         return self.distinct_by(lambda x: x)
@@ -1016,7 +1016,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([{'id': 1}, {'id': 2}, {'id': 1}])
         >>> distinct = obs.distinct_by(lambda x: x['id'])
-        >>> await distinct.to_list()
+        >>> await distinct.run_to_list()
         [{'id': 1}, {'id': 2}]
         """
         seen = set[CanHash]()
@@ -1052,7 +1052,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([[1, 2], [3, 4]])
         >>> flattened = obs.flatten_iterable()
-        >>> await flattened.to_list()
+        >>> await flattened.run_to_list()
         [1, 2, 3, 4]
         """
 
@@ -1093,7 +1093,7 @@ class Observable(ABC, Generic[A_co]):
         >>>     yield x
         >>> obs = Observable.from_iterable([gen(1), gen(2)])
         >>> flattened = obs.flatten_async_iterable()
-        >>> await flattened.to_list()
+        >>> await flattened.run_to_list()
         [1, 2]
         """
 
@@ -1113,7 +1113,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([1, None, 2, None, 3])
         >>> flattened = obs.flatten_optional()
-        >>> await flattened.to_list()
+        >>> await flattened.run_to_list()
         [1, 2, 3]
         """
 
@@ -1150,7 +1150,7 @@ class Observable(ABC, Generic[A_co]):
         >>> obs2 = Observable.from_iterable([3, 4])
         >>> outer = Observable.from_iterable([obs1, obs2])
         >>> flattened = outer.flatten_observable()
-        >>> await flattened.to_list()
+        >>> await flattened.run_to_list()
         [1, 2, 3, 4]
         """
 
@@ -1193,7 +1193,7 @@ class Observable(ABC, Generic[A_co]):
         >>> obs2 = Observable.from_iterable([3, 4])
         >>> outer = Observable.from_iterable([obs1, obs2])
         >>> flattened = outer.flatten_observable()
-        >>> await flattened.to_list()
+        >>> await flattened.run_to_list()
         [1, 2, 3, 4]
         """
 
@@ -1236,7 +1236,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.interval(0.1)
         >>> throttled = obs.throttle(1.0)
-        >>> await throttled.take(3).to_list()
+        >>> await throttled.take(3).run_to_list()
         [0, 1, 2] # emitted at 1 second intervals
         """
         source = self
@@ -1311,7 +1311,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> obs.print("Item: ").to_list()
+        >>> obs.print("Item: ").run_to_list()
         Item: 1
         Item: 2
         Item: 3
@@ -1369,7 +1369,7 @@ class Observable(ABC, Generic[A_co]):
 
         return TQDMObservable()
 
-    async def to_list(self) -> list[A_co]:
+    async def run_to_list(self) -> list[A_co]:
         """Collect all values from the Observable into a list.
 
         Returns
@@ -1380,7 +1380,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_interval(0.1).take(3)
-        >>> await obs.to_list()
+        >>> await obs.run_to_list()
         [1, 2, 3]
         """
         result = []
@@ -1394,7 +1394,7 @@ class Observable(ABC, Generic[A_co]):
 
         return result
 
-    async def to_slist(self) -> 'Slist[A_co]':
+    async def run_to_slist(self) -> 'Slist[A_co]':
         """Collect values into an Slist.
 
         Returns
@@ -1405,12 +1405,12 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> await obs.to_slist()
+        >>> await obs.run_to_slist()
         Slist([1, 2, 3])
         """
-        return Slist(await self.to_list())
+        return Slist(await self.run_to_list())
 
-    async def to_set(self: "Observable[CanHash]") -> set[A_co]:
+    async def run_to_set(self: "Observable[CanHash]") -> set[A_co]:
         """Collect values into a set, removing duplicates.
 
         Returns
@@ -1421,7 +1421,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 1])
-        >>> await obs.to_set()
+        >>> await obs.run_to_set()
         {1, 2}
         """
         result = set()
@@ -1492,7 +1492,7 @@ class Observable(ABC, Generic[A_co]):
                         yield item
                     processing_limit.release_on_behalf_of(item)
 
-    async def to_file(
+    async def run_to_file(
         self,
         file_path: Path,
         mode: OpenTextMode = 'a',
@@ -1515,7 +1515,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> await obs.to_file('data.txt')
+        >>> await obs.run_to_file('data.txt')
         """
 
         # lock to prevent multiple awaitables from writing at the same time
@@ -1548,7 +1548,7 @@ class Observable(ABC, Generic[A_co]):
 
         await self.subscribe(new_subscriber)
 
-    async def to_opened_async_file(
+    async def run_to_opened_async_file(
         self,
         opened_file: AsyncFile[Any],
         serialize: Callable[[A_co], str] = str,
@@ -1567,7 +1567,7 @@ class Observable(ABC, Generic[A_co]):
 
         await self.subscribe(file_subscriber)
 
-    async def to_opened_file(
+    async def run_to_opened_file(
         self,
         opened_file: IO[Any],
         write_newline: bool = True,
@@ -1582,7 +1582,7 @@ class Observable(ABC, Generic[A_co]):
 
         await self.subscribe(file_subscriber)
 
-    async def reduce(self, func: Callable[[A, A], A], initial: A) -> A:
+    async def run_reduce(self, func: Callable[[A, A], A], initial: A) -> A:
         """Reduce the Observable using `func`, starting with `initial`.
 
         Parameters
@@ -1600,7 +1600,7 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> await obs.reduce(lambda acc, x: acc + x, 0)
+        >>> await obs.run_reduce(lambda acc, x: acc + x, 0)
         6
         """
         result = initial
@@ -1616,7 +1616,7 @@ class Observable(ABC, Generic[A_co]):
 
         return result
 
-    async def sum(self: 'Observable[int | float]') -> int | float:
+    async def run_sum(self: 'Observable[int | float]') -> int | float:
         """Sum all emitted values.
 
         Returns
@@ -1627,12 +1627,12 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> await obs.sum()
+        >>> await obs.run_sum()
         6
         """
-        return await self.reduce(lambda a, b: a + b, 0)
+        return await self.run_reduce(lambda a, b: a + b, 0)
 
-    async def sum_option(self: "Observable[CanAdd]") -> Optional[CanAdd]:
+    async def run_sum_option(self: "Observable[CanAdd]") -> Optional[CanAdd]:
         """Sum values using +, return None if empty.
 
         Returns
@@ -1643,10 +1643,10 @@ class Observable(ABC, Generic[A_co]):
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
-        >>> await obs.sum_option()
+        >>> await obs.run_sum_option()
         6
         >>> empty = Observable.from_iterable([])
-        >>> await empty.sum_option()
+        >>> await empty.run_sum_option()
         None
         """
         result = None
@@ -1684,7 +1684,7 @@ class Observable(ABC, Generic[A_co]):
         >>> await empty.sum_or_raise()
         # raises GrugSumError
         """
-        result = await self.sum_option()
+        result = await self.run_sum_option()
         if result is None:
             raise GrugSumError("Cannot sum an empty observable")
         return result
@@ -1706,7 +1706,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
         >>> taken = obs.take(3)
-        >>> await taken.to_list()
+        >>> await taken.run_to_list()
         [1, 2, 3]
         """
         source = self
@@ -1749,7 +1749,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
         >>> taken = obs.take_while_exclusive(lambda x: x < 4)
-        >>> await taken.to_list()
+        >>> await taken.run_to_list()
         [1, 2, 3]
         """
         source = self
@@ -1788,7 +1788,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
         >>> taken = obs.take_while_inclusive(lambda x: x < 4)
-        >>> await taken.to_list()
+        >>> await taken.run_to_list()
         [1, 2, 3, 4]
         """
         source = self
@@ -1827,7 +1827,7 @@ class Observable(ABC, Generic[A_co]):
         --------
         >>> obs = Observable.from_iterable([1, 2, 3, 4, 5])
         >>> taken = obs.take_last(2)
-        >>> await taken.to_list()
+        >>> await taken.run_to_list()
         [4, 5]
         """
         source = self
@@ -1867,7 +1867,7 @@ class Observable(ABC, Generic[A_co]):
         >>> await obs.first()
         1
         """
-        items = await self.take(1).to_list()
+        items = await self.take(1).run_to_list()
         return items[0]
 
     async def run_to_completion(self) -> int:

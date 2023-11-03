@@ -27,9 +27,10 @@ Generally - what we always do is
 1. Create an observable (A stream that is not running yet)
 2. Transform it with operators
 3. Run it. 
-   - For example, `to_list` will run the observable and collect the results into a list.
+   - For example, run_`to_list` will run the observable and collect the results into a list.
    - `run_to_completion` will run the observable until it completes
-   - `to_file` will run the observable and write the results to a file
+   - `run_to_file` will run the observable and write the results to a file
+
 ```python
 import anyio
 from grugstream import Observable
@@ -51,7 +52,7 @@ async def main():
     )
 
     # Actually start the stream and collect the results into a list
-    results = await observable.to_list()
+    results = await observable.run_to_list()
 
     for response in results:
         print(response)
@@ -79,7 +80,7 @@ async def mock_http_call_to_google(item: str) -> str:
 async def main():
     # Create an observable, and call google for each item
     observable = (
-         # repeat every 0.1 seconds
+        # repeat every 0.1 seconds
         Observable.from_repeat("one", 0.1)
         # at any given time, there will be at most 50 concurrent calls to google
         .map_async_par(lambda item: mock_http_call_to_google(item), max_par=50)
@@ -87,7 +88,7 @@ async def main():
 
     # Actually start the stream - results into a list
     # Let's take only 20 results
-    results = await observable.take(20).to_list()
+    results = await observable.take(20).run_to_list()
 
     for response in results:
         print(response)
@@ -102,6 +103,7 @@ You  want all the api calls to be run in parallel with each other -
 the items doing the 2nd api call don't need to wait for all the items for the 1st api call to complete.
 And maybe you want to stream to a file while it completes.
 Thats when streaming really shines.
+
 ```python
 import random
 from pathlib import Path
@@ -114,36 +116,36 @@ from grugstream import Observable
 
 # Mock async function simulating an HTTP call to Google
 async def mock_http_call_to_google(item: str) -> str:
-    await anyio.sleep(1)
-    return f"Google Response for {item}"
+   await anyio.sleep(1)
+   return f"Google Response for {item}"
 
 
 # Mock async function simulating an API call that returns a list of items
 async def mock_api_call_that_returns_list(item: str) -> List[str]:
-    await anyio.sleep(0.5)
-    return [f"Item {i} from {item}" for i in range(3)]
+   await anyio.sleep(0.5)
+   return [f"Item {i} from {item}" for i in range(3)]
 
 
 # Mock async function simulating an API call that returns an Optional value
 async def mock_api_call_that_returns_optional(item: str) -> Optional[str]:
-    await anyio.sleep(0.2)
-    maybe_yes = random.choice([True, False])
-    return item if maybe_yes else None
+   await anyio.sleep(0.2)
+   maybe_yes = random.choice([True, False])
+   return item if maybe_yes else None
 
 
 async def main():
-    observable = (
-        Observable.from_repeat("query", 0.1)
-        .map_async_par(lambda item: mock_http_call_to_google(item))
-        .map_async_par(lambda item: mock_api_call_that_returns_list(item))
-        .flatten_iterable()  # Flatten the list into individual items
-        .map_async_par(lambda item: mock_api_call_that_returns_optional(item))
-        .print()
-        .flatten_optional()  # Remove None values
-    )
+   observable = (
+      Observable.from_repeat("query", 0.1)
+      .map_async_par(lambda item: mock_http_call_to_google(item))
+      .map_async_par(lambda item: mock_api_call_that_returns_list(item))
+      .flatten_iterable()  # Flatten the list into individual items
+      .map_async_par(lambda item: mock_api_call_that_returns_optional(item))
+      .print()
+      .flatten_optional()  # Remove None values
+   )
 
-    # Write the results to a file
-    await observable.take(100).to_file(Path("results.txt"))
+   # Write the results to a file
+   await observable.take(100).run_to_file(Path("results.txt"))
 
 
 anyio.run(main)

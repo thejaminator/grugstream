@@ -20,7 +20,7 @@ async def main():
 
     # Actually start the stream - results into a list
     # Let's take only 20 results
-    results = await observable.take(20).to_list()
+    results = await observable.take(20).run_to_list()
 
     for response in results:
         print(response)

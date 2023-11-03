@@ -185,7 +185,7 @@ async def main():
         .tqdm(tqdm_bar=tqdm(desc="Stage two a"))
         .map_async_par(handle_stage_two_b, max_par=10)
         .print()
-        .to_list()
+        .run_to_list()
     )
 
     await stage_one_cache.async_write_to_path()

@@ -25,7 +25,7 @@ async def test_throttle():
     throttled_observable = observable.print().throttle(seconds=0.1, max_buffer_size=1)
     time_start = datetime.datetime.now()
     # Run the observable
-    items = await throttled_observable.to_list()
+    items = await throttled_observable.run_to_list()
     assert items == [1, 2, 3, 4, 5]
     time_end = datetime.datetime.now()
     time_delta = time_end - time_start
@@ -36,7 +36,7 @@ async def test_throttle():
 async def test_map():
     observable = Observable.from_iterable([1, 2, 3])
     mapped = observable.map(lambda x: x * 2)
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [2, 4, 6]
 
 
@@ -45,7 +45,7 @@ async def test_for_each_counter():
     observable = Observable.from_iterable([1, 2, 3])
     counter = Counter()
     mapped = observable.for_each_count(counter)
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [1, 2, 3]
     assert counter["count"] == 3
 
@@ -55,7 +55,7 @@ async def test_for_each_counter_identity():
     observable = Observable.from_iterable([1, 2, 3])
     counter = Counter()
     mapped = observable.for_each_count(counter, key=lambda x: x)
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [1, 2, 3]
     assert counter[1] == 1
 
@@ -67,7 +67,7 @@ async def test_from_awaitable():
         return 1
 
     observable = Observable.from_awaitable(some_awaitable())
-    items = await observable.to_list()
+    items = await observable.run_to_list()
     assert items == [1]
 
 
@@ -77,7 +77,7 @@ async def test_flatten_observable_sequential():
     obs2 = Observable.from_iterable([3, 4])
     outer = Observable.from_iterable([obs1, obs2])
     flattened = outer.flatten_observable_sequential()
-    items = await flattened.to_list()
+    items = await flattened.run_to_list()
     assert items == [1, 2, 3, 4]
 
 
@@ -88,7 +88,7 @@ async def test_flatten_observable_sequential_three():
     obs3 = Observable.from_iterable([5, 6])
     outer = Observable.from_iterable([obs1, obs2, obs3])
     flattened = outer.flatten_observable_sequential()
-    items = await flattened.to_list()
+    items = await flattened.run_to_list()
     assert items == [1, 2, 3, 4, 5, 6]
 
 
@@ -99,7 +99,7 @@ async def test_flatten_observable():
     obs3 = Observable.from_iterable([5, 6])
     outer = Observable.from_iterable([obs1, obs2, obs3])
     flattened = outer.flatten_observable()
-    items = await flattened.to_list()
+    items = await flattened.run_to_list()
     assert items == [1, 2, 3, 4, 5, 6]
 
 
@@ -113,7 +113,7 @@ async def test_flatten_observable_timed():
     time_end = datetime.datetime.now()
     time_delta = time_end - time_start
     assert time_delta < datetime.timedelta(seconds=0.5)
-    items = await flattened.to_list()
+    items = await flattened.run_to_list()
     # there should be total 15 items
     assert len(items) == 15
     # 14 items should be "a"
@@ -130,7 +130,7 @@ async def test_map_async():
 
     observable = Observable.from_iterable([1, 2, 3])
     mapped = observable.map_async(multiply_by_two)
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [2, 4, 6]
 
 
@@ -142,7 +142,7 @@ async def test_map_async_par():
 
     observable = Observable.from_iterable([1, 2, 3])
     mapped = observable.map_async_par(multiply_by_two)
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [2, 4, 6]
 
 
@@ -154,10 +154,10 @@ async def test_map_async_par_two_obs():
 
     observable = Observable.from_iterable([1, 2, 3])
     mapped = observable.map_async_par(multiply_by_two)
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [2, 4, 6]
 
-    items_again = await mapped.to_list()
+    items_again = await mapped.run_to_list()
     assert items_again == [2, 4, 6]
 
 
@@ -170,7 +170,7 @@ async def test_map_async_par_timed():
     observable = Observable.from_interval(0.01).take(10)
     mapped = observable.map_async_par(multiply_by_two)
     time_start = datetime.datetime.now()
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
     time_end = datetime.datetime.now()
     time_delta = time_end - time_start
@@ -186,7 +186,7 @@ async def test_map_blocking_par():
     observable = Observable.from_interval(0.01).take(10)
     mapped = observable.map_blocking_par(multiply_by_two, max_par=10)
     time_start = datetime.datetime.now()
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
     time_end = datetime.datetime.now()
     time_delta = time_end - time_start
@@ -202,8 +202,8 @@ async def test_source_many_subscribes():
         counter += 1
 
     source = Observable.from_iterable([1, 2, 3, 4, 5]).for_each(count)
-    await source.map(lambda x: "ok").to_list()
-    await source.to_list()
+    await source.map(lambda x: "ok").run_to_list()
+    await source.run_to_list()
     assert counter == 10
 
 
@@ -225,11 +225,11 @@ async def test_map_blocking_par_many():
     mapped = observable.map_blocking_par(multiply_by_two, max_par=10)
     mapped_again = observable.map_blocking_par(multiply_by_4, max_par=10)
     mapped_3 = observable.map_blocking_par(multiply_by_3, max_par=10)
-    items = await mapped.to_list()
+    items = await mapped.run_to_list()
     assert items == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
-    items_again = await mapped_again.to_list()
+    items_again = await mapped_again.run_to_list()
     assert items_again == [0, 4, 8, 12, 16, 20, 24, 28, 32, 36]
-    items_3 = await mapped_3.to_list()
+    items_3 = await mapped_3.run_to_list()
     assert items_3 == [0, 3, 6, 9, 12, 15, 18, 21, 24, 27]
 
 
@@ -237,14 +237,14 @@ async def test_map_blocking_par_many():
 async def test_filter():
     observable = Observable.from_iterable([1, 2, 3, 4, 5])
     filtered = observable.filter(lambda x: x % 2 == 0)
-    items = await filtered.to_list()
+    items = await filtered.run_to_list()
     assert items == [2, 4]
 
 
 @pytest.mark.asyncio
 async def test_enumerated():
     observable = Observable.from_iterable(["test"] * 5)
-    assert await observable.enumerated().to_list() == [
+    assert await observable.enumerated().run_to_list() == [
         (0, "test"),
         (1, "test"),
         (2, "test"),
@@ -257,7 +257,7 @@ async def test_enumerated():
 async def test_take():
     observable = Observable.from_iterable([1, 2, 3, 4, 5])
     taken = observable.take(3)
-    items = await taken.to_list()
+    items = await taken.run_to_list()
     assert items == [1, 2, 3]
 
 
@@ -265,7 +265,7 @@ async def test_take():
 async def test_take_inclusive():
     observable = Observable.from_iterable([1, 2, 3, 4, 5])
     taken = observable.take_while_inclusive(lambda x: x < 4)
-    items = await taken.to_list()
+    items = await taken.run_to_list()
     assert items == [1, 2, 3, 4]
 
 
@@ -273,7 +273,7 @@ async def test_take_inclusive():
 async def test_take_exclusive():
     observable = Observable.from_iterable([1, 2, 3, 4, 5])
     taken = observable.take_while_exclusive(lambda x: x < 4)
-    items = await taken.to_list()
+    items = await taken.run_to_list()
     assert items == [1, 2, 3]
 
 
@@ -281,7 +281,7 @@ async def test_take_exclusive():
 async def test_distinct():
     observable = Observable.from_iterable([1, 2, 2, 3, 4, 4, 4])
     distinct = observable.distinct()
-    items = await distinct.to_list()
+    items = await distinct.run_to_list()
     assert items == [1, 2, 3, 4]
 
 
@@ -296,7 +296,7 @@ async def test_first():
 async def test_flatten_iterable():
     observable = Observable.from_iterable([[1, 2], [3, 4], [5]])
     flattened = observable.flatten_iterable()
-    items = await flattened.to_list()
+    items = await flattened.run_to_list()
     assert items == [1, 2, 3, 4, 5]
 
 
@@ -308,7 +308,7 @@ async def test_flatten_async_iterable():
 
     observable = Observable.from_iterable([async_gen([1, 2]), async_gen([3, 4])])
     flattened = observable.flatten_async_iterable()
-    items = await flattened.to_list()
+    items = await flattened.run_to_list()
     assert items == [1, 2, 3, 4]
 
 
@@ -316,21 +316,21 @@ async def test_flatten_async_iterable():
 async def test_flatten_optional():
     observable = Observable.from_iterable([1, None, 2, 3, None])
     flattened = observable.flatten_optional()
-    items = await flattened.to_list()
+    items = await flattened.run_to_list()
     assert items == [1, 2, 3]
 
 
 @pytest.mark.asyncio
 async def test_reduce():
     observable = Observable.from_iterable([1, 2, 3, 4, 5])
-    result = await observable.reduce(lambda acc, x: acc + x, 0)
+    result = await observable.run_reduce(lambda acc, x: acc + x, 0)
     assert result == 15
 
 
 @pytest.mark.asyncio
 async def test_sum():
     observable = Observable.from_iterable([1, 2, 3, 4, 5])
-    result = await observable.sum()
+    result = await observable.run_sum()
     assert result == 15
 
 
@@ -344,7 +344,7 @@ async def test_from_file(tmp_path: Path):
     observable = Observable.from_file(file_path)
 
     # Run the observable and collect the output
-    items = await observable.to_list()
+    items = await observable.run_to_list()
 
     expected_output = ["line1", "line2", "line3"]
     assert items == expected_output
@@ -360,13 +360,13 @@ async def test_from_file_two_obs(tmp_path: Path):
     observable = Observable.from_file(file_path)
 
     # Run the observable and collect the output
-    items = await observable.to_list()
+    items = await observable.run_to_list()
 
     expected_output = ["line1", "line2", "line3"]
     assert items == expected_output
 
     # Run the observable again
-    items_again = await observable.to_list()
+    items_again = await observable.run_to_list()
     assert items_again == expected_output
 
 
@@ -380,7 +380,7 @@ async def test_to_file(tmp_path: Path):
     file_path = tmp_path / "testfile.txt"
 
     # Write to file
-    await observable.to_file(file_path)
+    await observable.run_to_file(file_path)
 
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
@@ -413,7 +413,7 @@ async def test_to_opened_file():
     stringio = StringIO()
 
     # Write to file
-    await observable.to_opened_file(stringio)
+    await observable.run_to_opened_file(stringio)
 
     # Check the file contents
     file_contents = stringio.getvalue().splitlines()
@@ -430,11 +430,11 @@ async def test_to_file_from_file(tmp_path: Path):
     file_path = tmp_path / Path("testfile.txt")
 
     # Write to file
-    await observable.to_file(file_path)
+    await observable.run_to_file(file_path)
 
     # Create an observable from the file
     new_observable = Observable.from_file(file_path)
-    new_list = await new_observable.to_list()
+    new_list = await new_observable.run_to_list()
     assert new_list == test_data
 
 

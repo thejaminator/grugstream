@@ -18,7 +18,7 @@ async def main():
     )
 
     # Actually start the stream and collect the results into a list
-    results = await observable.to_list()
+    results = await observable.run_to_list()
 
     for response in results:
         print(response)
