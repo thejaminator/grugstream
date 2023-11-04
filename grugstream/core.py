@@ -1209,7 +1209,13 @@ class Observable(ABC, Generic[A_co]):
                     tg.cancel_scope.cancel()
                     await subscriber.on_error(e)
 
-                await inner_observable.subscribe(create_subscriber(on_next=on_next, on_error=on_error))
+                async def on_completed() -> None:
+                    tg.cancel_scope.cancel()
+                    await subscriber.on_completed()
+
+                await inner_observable.subscribe(
+                    create_subscriber(on_next=on_next, on_error=on_error, on_completed=on_completed)
+                )
 
             async with anyio.create_task_group() as tg:
                 async for inner_observable in self.to_async_iterable():
