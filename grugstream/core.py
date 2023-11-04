@@ -202,6 +202,28 @@ class Observable(ABC, Generic[A_co]):
         return IterableObservable()
 
     @staticmethod
+    def from_many_observables(*observables: Observable[A_co]) -> "Observable[A_co]":
+        """
+        Create an Observable from multiple Observables.
+        Note that this will try to emit values from the multiple Observables
+        concurrently.
+
+
+        Returns
+        -------
+        Observable
+            Observable emitting all values from nested Observables.
+
+        Examples
+        --------
+        >>> obs1 = Observable.from_iterable([1, 2])
+        >>> obs2 = Observable.from_iterable([3, 4])
+        >>> await Observable.from_many_observables(obs1, obs2).to_list()
+        [1, 3, 2, 4]
+        """
+        return Observable.from_iterable(observables).flatten_observable()
+
+    @staticmethod
     def from_iterable_thunk(thunk: Callable[[], Iterable[A]]) -> "Observable[A]":
         """Create an Observable from a thunk that returns an iterable.
         This is useful if you want to re-evaluate the iterable each time.
@@ -1194,7 +1216,7 @@ class Observable(ABC, Generic[A_co]):
         >>> outer = Observable.from_iterable([obs1, obs2])
         >>> flattened = outer.flatten_observable()
         >>> await flattened.to_list()
-        [1, 2, 3, 4]
+        [1, 3, 4, 2]
         """
 
         async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
@@ -1222,6 +1244,30 @@ class Observable(ABC, Generic[A_co]):
                     tg.start_soon(subscribe_inner, inner_observable)
 
         return create_observable(subscribe_async)
+
+    def merge_with(self: 'Observable[A_co]', *others: 'Observable[A_co]') -> 'Observable[A_co]':
+        """Merge this Observable with other Observables.
+
+        Parameters
+        ----------
+        others : Observable
+            Other Observables to merge with.
+        Returns
+        -------
+        Observable
+            Observable emitting values from this and others Observables. Note that this
+            will not preserve order between Observables.
+
+        Examples
+        --------
+        >>> obs1 = Observable.from_iterable([1, 2])
+        >>> obs2 = Observable.from_iterable([3, 4])
+        >>> merged = obs1.merge_with(obs2)
+        >>> await merged.to_list()
+        [1, 3, 4, 2]
+        """
+        new = self.from_iterable([self, *others])
+        return new.flatten_observable()
 
     def throttle(self, seconds: float, max_buffer_size: int = 1) -> 'Observable[A_co]':
         """Throttle emissions to at most one per `seconds` interval.
