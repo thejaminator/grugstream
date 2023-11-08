@@ -1232,7 +1232,6 @@ class Observable(ABC, Generic[A_co]):
                     await subscriber.on_error(e)
 
                 async def on_completed() -> None:
-                    tg.cancel_scope.cancel()
                     await subscriber.on_completed()
 
                 await inner_observable.subscribe(
@@ -1769,10 +1768,13 @@ class Observable(ABC, Generic[A_co]):
             async def on_next(value: A_co) -> Acknowledgement:
                 nonlocal count
                 count += 1
-                if count <= n:
+                if count < n:
                     return await subscriber.on_next(value)
                 else:
                     # call on_completed when maximum count is reached
+                    # Call on_next one last time
+                    await subscriber.on_next(value)
+                    # Call on_completed
                     await subscriber.on_completed()
                     return Acknowledgement.stop
 
