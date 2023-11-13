@@ -942,7 +942,7 @@ class Observable(ABC, Generic[A_co]):
 
     def on_error_restart(
         self: Observable[A_co],
-        max_restarts: int | None = None,
+        max_restarts: int | None = 1000,
         exceptions: tuple[type[Exception]] = (Exception,),
         log_restarting_func: Callable[[int, Exception], None]
         | None = lambda restart_count, exception: print(
@@ -973,6 +973,7 @@ class Observable(ABC, Generic[A_co]):
                             if log_restarting_func:
                                 log_restarting_func(count, error)
                             # restart
+                            # TODO: Trampoline to avoid infinite recursive blowup?
                             restarted_subscriber = RestartSubscriber()
                             await source.subscribe(restarted_subscriber)
                             return None
