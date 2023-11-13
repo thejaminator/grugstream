@@ -954,34 +954,41 @@ class Observable(ABC, Generic[A_co]):
         ),
     ) -> "Observable[A_co]":
         """Restarts the observable if the exceptions are encountered"""
-        source = self
+        source: Observable[A_co] = self
         count = 0
         if max_restarts is not None:
             assert max_restarts > 0, "max_restarts must be more than 0"
         max_restarts_num = max_restarts if max_restarts is not None else math.inf
 
         async def subscribe(subscriber: Subscriber[A_co]) -> None:
-            async def on_error(error: Exception) -> None:
-                if isinstance(error, exceptions):
-                    nonlocal count
-                    count += 1
-                    if count <= max_restarts_num:
-                        if log_restarting_func:
-                            log_restarting_func(count, error)
-                        # restart
-                        restarted_subscriber = create_subscriber(
-                            on_next=subscriber.on_next, on_error=on_error, on_completed=subscriber.on_completed
-                        )
-                        await source.subscribe(restarted_subscriber)
-                        return None
-                if log_unhandled_func:
-                    log_unhandled_func(count, error)
-                # Raise if max restart reached or not caught
-                raise error
+            class RestartSubscriber(Subscriber[B]):
+                def __init__(self) -> None:
+                    self.__threshold_reached: bool = False
 
-            subscriber_with_on_error = create_subscriber(
-                on_next=subscriber.on_next, on_error=on_error, on_completed=subscriber.on_completed
-            )
+                async def on_error(self, error: Exception) -> None:
+                    if isinstance(error, exceptions):
+                        nonlocal count
+                        count += 1
+                        if count <= max_restarts_num:
+                            if log_restarting_func:
+                                log_restarting_func(count, error)
+                            # restart
+                            restarted_subscriber = RestartSubscriber()
+                            await source.subscribe(restarted_subscriber)
+                            return None
+                    if log_unhandled_func:
+                        log_unhandled_func(count, error)
+                    # Raise if max restart reached or not caught
+                    self.__threshold_reached = True
+                    raise error
+
+                async def on_next(self, value: B) -> Acknowledgement:
+                    if self.__threshold_reached:
+                        return Acknowledgement.stop
+                    else:
+                        return await subscriber.on_next(value)  # type: ignore
+
+            subscriber_with_on_error = RestartSubscriber()
 
             await source.subscribe(subscriber_with_on_error)
 

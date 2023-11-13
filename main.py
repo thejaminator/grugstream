@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import anyio
 
@@ -15,15 +14,13 @@ async def main():
 
     observable = (
         Observable.from_iterable(test_data)
+        .print()
         .for_each_enumerated(lambda idx, item: None if idx != len(test_data) - 1 else throw())
         .on_error_restart(max_restarts=10)
     )
 
-    # Set up the output file path
-    file_path = Path("testfile.txt")
-
     # Write to file
-    await observable.to_file_overwriting(file_path, write_every_n=1000)
+    await observable.run_to_completion()
 
 
 if __name__ == "__main__":
