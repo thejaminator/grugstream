@@ -32,6 +32,24 @@ async def test_throttle():
 
 
 @pytest.mark.asyncio
+async def test_backpressure():
+    count = 0
+
+    def increment_count(item: int) -> None:
+        nonlocal count
+        count += 1
+
+    async def slow_func(item: Any) -> None:
+        await anyio.sleep(0.1)
+
+    source_data = Observable.from_interval(seconds=0.01).for_each(increment_count)
+    # Run the observable
+    await source_data.map_async(slow_func).take(5).run_to_completion()
+    assert count <= 6  # shouldn't increment so much
+    assert count >= 5
+
+
+@pytest.mark.asyncio
 async def test_map():
     observable = Observable.from_iterable([1, 2, 3])
     mapped = observable.map(lambda x: x * 2)
