@@ -57,10 +57,13 @@ class Addable(Protocol):
 CanAdd = TypeVar("CanAdd", bound=Addable)
 
 
-def create_observable(new_subscribe_func: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
+def create_observable(
+    new_subscribe_func: Callable[["Subscriber[T_contra]"], Awaitable[None]]
+) -> "Observable[T_contra]":
     """Creates an Observable with a new subscribe function"""
-    class AnonObservable(Observable[A_co]):  # type: ignore
-        async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
+
+    class AnonObservable(Observable[A]):
+        async def subscribe(self, subscriber: Subscriber[A]) -> None:
             await new_subscribe_func(subscriber)
 
     return AnonObservable()
@@ -191,7 +194,7 @@ class Observable(ABC, Generic[A_co]):
         [1, 2, 3]
         """
 
-        class IterableObservable(Observable[A]):  # type: ignore
+        class IterableObservable(Observable[B]):
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 ack = Acknowledgement.ok
                 for item in iterable:
@@ -255,7 +258,7 @@ class Observable(ABC, Generic[A_co]):
         [1, 2, 3]
         """
 
-        class IterableObservable(Observable[A]):  # type: ignore
+        class IterableObservable(Observable[B]):
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 iterable_ = thunk()
                 ack = Acknowledgement.ok
@@ -291,7 +294,7 @@ class Observable(ABC, Generic[A_co]):
         [1, 2]
         """
 
-        class AsyncIterableObservable(Observable[A]):  # type: ignore
+        class AsyncIterableObservable(Observable[B]):
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 ack = Acknowledgement.ok
                 async for item in iterable:
@@ -331,7 +334,7 @@ class Observable(ABC, Generic[A_co]):
         [1, 2]
         """
 
-        class AsyncIterableObservable(Observable[A]):  # type: ignore
+        class AsyncIterableObservable(Observable[B]):
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 generator = thunk()
                 ack = Acknowledgement.ok
@@ -1319,7 +1322,7 @@ class Observable(ABC, Generic[A_co]):
                         await anyio.sleep(seconds)
                         try:
                             value = receive_stream.receive_nowait()
-                            response = await subscriber.on_next(value)  # type: ignore
+                            response = await subscriber.on_next(value)
                             if response == Acknowledgement.stop:
                                 await subscriber.on_completed()
                                 tg.cancel_scope.cancel()
@@ -2031,8 +2034,8 @@ class Observable(ABC, Generic[A_co]):
         """
         count = 0
 
-        class AnonymousSubscriber(Subscriber[T_contra]):  # type: ignore
-            async def on_next(self, value: T_contra) -> Acknowledgement:
+        class AnonymousSubscriber(Subscriber[A]):
+            async def on_next(self, value: A) -> Acknowledgement:
                 nonlocal count
                 count = count + 1
                 return Acknowledgement.ok
