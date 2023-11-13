@@ -502,8 +502,12 @@ class Observable(ABC, Generic[A_co]):
 
         async def subscribe(subscriber: Subscriber[B_co]) -> None:
             async def on_next(value: A) -> Acknowledgement:
-                transformed_value = func(value)
-                return await subscriber.on_next(transformed_value)
+                try:
+                    transformed_value = func(value)
+                    return await subscriber.on_next(transformed_value)
+                except Exception as e:
+                    await subscriber.on_error(e)
+                    return Acknowledgement.stop
 
             map_subscriber = create_subscriber(
                 on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
@@ -584,7 +588,12 @@ class Observable(ABC, Generic[A_co]):
 
         async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
             async def on_next(value: A) -> Acknowledgement:
-                transformed_value = await func(value)
+                try:
+                    transformed_value = await func(value)
+                except Exception as e:
+                    await subscriber.on_error(e)
+                    return Acknowledgement.stop
+
                 return await subscriber.on_next(transformed_value)
 
             map_subscriber = create_subscriber(
@@ -744,8 +753,12 @@ class Observable(ABC, Generic[A_co]):
 
             async def process_item(item: A) -> None:
                 async with semaphore:
-                    result = await func(item)
-                    ack = await subscriber.on_next(result)
+                    try:
+                        result = await func(item)
+                    except Exception as e:
+                        await subscriber.on_error(e)
+                        tg.cancel_scope.cancel()
+                    ack = await subscriber.on_next(result)  # type: ignore
                 if ack == Acknowledgement.stop:
                     tg.cancel_scope.cancel()
 
@@ -1052,8 +1065,12 @@ class Observable(ABC, Generic[A_co]):
 
         async def new_subsribe_func(subscriber: Subscriber[A]) -> None:
             async def on_next(value: A) -> Acknowledgement:
-                if predicate(value):
-                    return await subscriber.on_next(value)
+                try:
+                    if predicate(value):
+                        return await subscriber.on_next(value)
+                except Exception as e:
+                    await subscriber.on_error(e)
+                    return Acknowledgement.stop
                 return Acknowledgement.ok
 
             filter_subscriber = create_subscriber(
@@ -1115,11 +1132,15 @@ class Observable(ABC, Generic[A_co]):
 
         async def subscribe_async(subscriber: Subscriber[A]) -> None:
             async def on_next(value: A) -> Acknowledgement:
-                hashable_value = key(value)
-                if hashable_value not in seen:
-                    seen.add(hashable_value)
-                    return await subscriber.on_next(value)
-                return Acknowledgement.ok
+                try:
+                    hashable_value = key(value)
+                    if hashable_value not in seen:
+                        seen.add(hashable_value)
+                        return await subscriber.on_next(value)
+                    return Acknowledgement.ok
+                except Exception as e:
+                    await subscriber.on_error(e)
+                    return Acknowledgement.stop
 
             distinct_subscriber = create_subscriber(
                 on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed

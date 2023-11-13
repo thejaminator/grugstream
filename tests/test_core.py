@@ -480,11 +480,56 @@ async def test_to_file_overwriting(tmp_path: Path):
     file_path = tmp_path / "testfile.txt"
 
     # Write to file
-    await observable.to_file_overwriting(file_path)
+    await observable.to_file_overwriting(file_path, write_every_n=10)
 
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
     assert file_contents == test_data
+
+
+@pytest.mark.asyncio
+async def test_to_file_overwriting_when_complete(tmp_path: Path):
+    # Test to make sure it writes when write_every_n is very high
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
+    observable = Observable.from_iterable(test_data)
+
+    # Set up the output file path
+    file_path = tmp_path / "testfile.txt"
+
+    # Write to file
+    await observable.to_file_overwriting(file_path, write_every_n=1000)
+
+    # Check the file contents
+    file_contents = file_path.read_text().splitlines()
+    assert file_contents == test_data
+
+
+@pytest.mark.asyncio
+async def test_to_file_overwriting_when_error(tmp_path: Path):
+    # Test to make sure it writes when write_every_n is very high
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
+
+    def throw() -> None:
+        raise ValueError("error")
+
+    observable = Observable.from_iterable(test_data).for_each_enumerated(
+        lambda idx, item: None if idx != len(test_data) - 1 else throw()
+    )
+
+    # Set up the output file path
+    file_path = tmp_path / "testfile.txt"
+
+    with pytest.raises(ValueError):
+        # Write to file
+        await observable.to_file_overwriting(file_path, write_every_n=1000)
+
+    # Check the file contents
+    file_contents = file_path.read_text().splitlines()
+    # should have up til the last item
+    without_last = test_data[:-1]
+    assert file_contents == without_last
 
 
 @pytest.mark.asyncio

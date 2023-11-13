@@ -1,4 +1,4 @@
-import datetime
+from pathlib import Path
 
 import anyio
 
@@ -6,26 +6,22 @@ from grugstream import Observable
 
 
 async def main():
-    async def wait_for_1(x: int) -> int:
-        await anyio.sleep(0.1)
-        return x
+    # Test to make sure it writes when write_every_n is very high
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
 
-    async def wait_for_long(x: int) -> int:
-        await anyio.sleep(2)
-        return x
+    def throw() -> None:
+        raise ValueError("error")
 
-    start_time = datetime.datetime.now()
-    obs1 = Observable.from_iterable([1, 2, 3, 4]).map_async(wait_for_1)
-    obs2 = Observable.from_iterable([10, 20, 30, 40]).map_async(wait_for_long)
-    outer = Observable.from_iterable([obs1, obs2])
+    observable = Observable.from_iterable(test_data).for_each_enumerated(
+        lambda idx, item: None if idx != len(test_data) - 1 else throw()
+    )
 
-    flattened = outer.flatten_observable().take(4)
+    # Set up the output file path
+    file_path = Path("testfile.txt")
 
-    items = await flattened.to_list()
-    end_time = datetime.datetime.now()
-    assert items == [1, 2, 3, 4]
-    time_delta = end_time - start_time
-    assert time_delta < datetime.timedelta(seconds=1)
+    # Write to file
+    await observable.to_file_overwriting(file_path, write_every_n=1000)
 
 
 if __name__ == "__main__":
