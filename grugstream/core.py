@@ -2,6 +2,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import deque
+import math
 from pathlib import Path
 from typing import (
     Callable,
@@ -656,8 +657,57 @@ class Observable(ABC, Generic[A_co]):
 
         return self.map_async_par(wrapped_func, max_par=int(limiter.total_tokens), max_buffer_size=max_buffer_size)
 
+    def buffer_with_size(self: Observable[A], max_buffer_size: int | None = 50) -> 'Observable[A]':
+        """Adds a buffer to the stream
+
+        Parameters
+        ----------
+        max_buffer_size : int, optional
+            Max size of buffer for pending values. If None is passed, an infinite buffer is created.
+        """
+
+        async def process_with_function(
+            subscriber: Subscriber[A], tg: TaskGroup, receive_stream: MemoryObjectReceiveStream[A]
+        ) -> None:
+            async def process_item(item: A) -> None:
+                ack = await subscriber.on_next(item)
+                if ack == Acknowledgement.stop:
+                    tg.cancel_scope.cancel()
+
+            async for item in receive_stream:
+                tg.start_soon(process_item, item)
+
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            send_stream, receive_stream = create_memory_object_stream(
+                max_buffer_size=max_buffer_size if max_buffer_size is not None else math.inf
+            )
+            try:
+
+                async def on_next(value: A) -> Acknowledgement:
+                    await send_stream.send(value)
+                    return Acknowledgement.ok
+
+                async def on_completed() -> None:
+                    await send_stream.aclose()
+
+                send_to_stream_subscriber = create_subscriber(
+                    on_next=on_next, on_completed=on_completed, on_error=subscriber.on_error
+                )
+
+                async with create_task_group() as tg:
+                    tg.start_soon(self.subscribe, send_to_stream_subscriber)
+                    tg.start_soon(process_with_function, subscriber, tg, receive_stream)
+                await subscriber.on_completed()
+
+            except Exception as e:
+                await subscriber.on_error(e)
+            finally:
+                await send_stream.aclose()
+
+        return create_observable(subscribe_async)
+
     def map_async_par(
-        self: Observable[A], func: Callable[[A], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
+        self: Observable[A], func: Callable[[A], Awaitable[B]], max_buffer_size: int | None = 50, max_par: int = 50
     ) -> 'Observable[B]':
         """Map values asynchronously in parallel using func.
 
@@ -666,7 +716,7 @@ class Observable(ABC, Generic[A_co]):
         func : Callable
             Async function to apply to each value.
         max_buffer_size : int, optional
-            Max size of buffer for pending values.
+            Max size of buffer for pending values. If None is passed, an infinite buffer is created.
         max_par : int, optional
             Max number of concurrent mappings.
 
@@ -703,7 +753,9 @@ class Observable(ABC, Generic[A_co]):
                 tg.start_soon(process_item, item)
 
         async def subscribe_async(subscriber: Subscriber[B]) -> None:
-            send_stream, receive_stream = create_memory_object_stream(max_buffer_size=max_buffer_size)
+            send_stream, receive_stream = create_memory_object_stream(
+                max_buffer_size=max_buffer_size if max_buffer_size is not None else math.inf
+            )
             try:
 
                 async def on_next(value: A) -> Acknowledgement:
