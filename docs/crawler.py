@@ -74,7 +74,7 @@ async def main():
             # We only want to crawl 1000 links
             .take(1000)
             # output it to a file to save
-            .for_each_to_file(file_path=Path("results.txt"))
+            .for_each_to_file_appending(file_path=Path("results.txt"))
         )
         await pipeline.run_to_completion()
 

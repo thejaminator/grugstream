@@ -33,7 +33,7 @@ What we always do is
 3. Run it. 
    - For example, `to_list` will run the observable and collect the results into a list.
    - `run_to_completion` will run the observable until it completes
-   - `to_file` will run the observable and write the results to a file
+   - `to_file_appending` will run the observable and write the results to a file
 ```python
 import anyio
 from grugstream import Observable

@@ -15,7 +15,7 @@ async def main():
         Observable.from_repeat("query", 0.1)
         .map_async_par(lambda item: mock_http_call_to_google(item))
         # What's google's response? Let's write it to a file
-        .for_each_to_file(
+        .for_each_to_file_appending(
             file_path=Path("results.txt"),
         )
         # Let's also append it to a list to print

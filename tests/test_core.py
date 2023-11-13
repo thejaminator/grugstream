@@ -1,7 +1,6 @@
 from collections import Counter
 import datetime
 import time
-from io import StringIO
 from pathlib import Path
 from typing import AsyncIterable, Iterable, Any
 
@@ -418,7 +417,7 @@ async def test_from_file_two_obs(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_to_file(tmp_path: Path):
+async def test_to_file_appending(tmp_path: Path):
     # Create some test data
     test_data = ["Hello", "world!", "This", "is", "a", "test."]
     observable = Observable.from_iterable(test_data)
@@ -429,6 +428,46 @@ async def test_to_file(tmp_path: Path):
     # Write to file
     await observable.to_file_appending(file_path)
 
+    # Check the file contents
+    file_contents = file_path.read_text().splitlines()
+    assert file_contents == test_data
+
+
+@pytest.mark.asyncio
+async def test_to_file_overwriting(tmp_path: Path):
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
+    observable = Observable.from_iterable(test_data)
+
+    # Set up the output file path
+    file_path = tmp_path / "testfile.txt"
+
+    # Write to file
+    await observable.to_file_overwriting(file_path)
+
+    # Check the file contents
+    file_contents = file_path.read_text().splitlines()
+    assert file_contents == test_data
+
+
+@pytest.mark.asyncio
+async def test_to_file_overwriting_twice(tmp_path: Path):
+    # Create some test data
+    test_data = ["Hello", "world!", "This", "is", "a", "test."]
+    observable = Observable.from_iterable(test_data)
+
+    # Set up the output file path
+    file_path = tmp_path / "testfile.txt"
+
+    # Write to file
+    await observable.to_file_overwriting(file_path)
+
+    # Check the file contents
+    file_contents = file_path.read_text().splitlines()
+    assert file_contents == test_data
+
+    # write again
+    await observable.to_file_overwriting(file_path)
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
     assert file_contents == test_data
@@ -448,22 +487,6 @@ async def test_for_each_to_file(tmp_path: Path):
 
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
-    assert file_contents == test_data
-
-
-@pytest.mark.asyncio
-async def test_to_opened_file():
-    # Create some test data
-    test_data = ["Hello", "world!", "This", "is", "a", "test."]
-    observable = Observable.from_iterable(test_data)
-
-    stringio = StringIO()
-
-    # Write to file
-    await observable.to_opened_file(stringio)
-
-    # Check the file contents
-    file_contents = stringio.getvalue().splitlines()
     assert file_contents == test_data
 
 

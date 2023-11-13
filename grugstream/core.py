@@ -16,7 +16,6 @@ from typing import (
     Protocol,
     Optional,
     Any,
-    IO,
     Counter,
 )
 
@@ -73,7 +72,8 @@ class Observable(ABC, Generic[A_co]):
     """
 
     def __init__(self) -> None:
-        self.file_handlers: dict[Path, AsyncFile[str]] = {}
+        ...
+        # self.file_handlers: dict[Path, AsyncFile[str]] = {}
 
     def from_one(self, value: A) -> "Observable[A]":
         """Create an Observable that emits a single value.
@@ -899,41 +899,43 @@ class Observable(ABC, Generic[A_co]):
         # data.txt will contain '1\n2\n3\n'
         """
 
-        source = self
         # need a lock to prevent multiple awaitable when it isn't ok to write yet
         can_write = anyio.Semaphore(1)
+        source = self
 
-        async def subscribe(subscriber: Subscriber[A]) -> None:
-            async def on_next(value: A) -> Acknowledgement:
-                if file_path not in source.file_handlers:
-                    file_path.parent.mkdir(exist_ok=True, parents=True)
-                    file = await anyio.open_file(file_path, mode="a")
-                    source.file_handlers[file_path] = file
-                else:
-                    file = source.file_handlers[file_path]
-                async with can_write:
-                    write_str = serialize(value) + ('\n' if write_newline else '')
-                    await file.write(write_str)
+        async def next_subscriber(subscriber: Subscriber[A]) -> None:
+            class AnonSubscriber(Subscriber[Any]):
+                def __init__(self) -> None:
+                    self.file_handlers: dict[Path, AsyncFile[str]] = {}
 
-                return await subscriber.on_next(value)
+                async def on_next(self, value: A) -> Acknowledgement:
+                    if file_path not in self.file_handlers:
+                        file_path.parent.mkdir(exist_ok=True, parents=True)
+                        file = await anyio.open_file(file_path, mode="a")
+                        self.file_handlers[file_path] = file
+                    else:
+                        file = self.file_handlers[file_path]
+                    async with can_write:
+                        write_str = serialize(value) + ('\n' if write_newline else '')
+                        await file.write(write_str)
 
-            async def on_error(error: Exception) -> None:
-                file = source.file_handlers.get(file_path)
-                if file is not None:
-                    await file.aclose()
-                return await subscriber.on_error(error)
+                    return await subscriber.on_next(value)
 
-            async def on_completed() -> None:
-                file = source.file_handlers.get(file_path)
-                if file is not None:
-                    await file.aclose()
-                return await subscriber.on_completed()
+                async def on_error(self, error: Exception) -> None:
+                    file = self.file_handlers.get(file_path)
+                    if file is not None:
+                        await file.aclose()
+                    return await subscriber.on_error(error)
 
-            new_subscriber = create_subscriber(on_next=on_next, on_error=on_error, on_completed=on_completed)
+                async def on_completed(self) -> None:
+                    file = self.file_handlers.get(file_path)
+                    if file is not None:
+                        await file.aclose()
+                    return await subscriber.on_completed()
 
-            await source.subscribe(new_subscriber)
+            await source.subscribe(AnonSubscriber())
 
-        return create_observable(subscribe)
+        return create_observable(next_subscriber)
 
     def for_each_async(self: Observable[A], func: Callable[[A], Awaitable[None]]) -> "Observable[A]":
         """Apply asynchronous func to each value.
@@ -1566,67 +1568,108 @@ class Observable(ABC, Generic[A_co]):
         # lock to prevent multiple awaitables from writing at the same time
         can_write = anyio.Semaphore(1)
 
-        async def on_next(value: A) -> Acknowledgement:
-            # Only open file ONCE when first value is received
-            if file_path not in self.file_handlers:
-                file_path.parent.mkdir(exist_ok=True, parents=True)
-                file = await anyio.open_file(file_path, mode="a")
-                self.file_handlers[file_path] = file
-            else:
-                file = self.file_handlers[file_path]
-            async with can_write:
-                await file.write(serialize(value) + ('\n' if write_newline else ''))
-            return Acknowledgement.ok
+        class AnonymousSubscriber(Subscriber[Any]):
+            def __init__(self) -> None:
+                self.file_handlers: dict[Path, AsyncFile[str]] = {}
 
-        async def on_error(error: Exception) -> None:
-            file = self.file_handlers.get(file_path)
-            if file is not None:
-                await file.aclose()
-            raise error
+            async def on_next(self, value: A) -> Acknowledgement:
+                # Only open file ONCE when first value is received
+                if file_path not in self.file_handlers:
+                    file_path.parent.mkdir(exist_ok=True, parents=True)
+                    file = await anyio.open_file(file_path, mode="a")
+                    self.file_handlers[file_path] = file
+                else:
+                    file = self.file_handlers[file_path]
+                async with can_write:
+                    await file.write(serialize(value) + ('\n' if write_newline else ''))
+                return Acknowledgement.ok
 
-        async def on_completed() -> None:
-            file = self.file_handlers.get(file_path)
-            if file is not None:
-                await file.aclose()
-            return None
+            async def on_error(self, error: Exception) -> None:
+                file = self.file_handlers.get(file_path)
+                if file is not None:
+                    await file.aclose()
+                raise error
 
-        new_subscriber = create_subscriber(on_next=on_next, on_error=on_error, on_completed=on_completed)
+            async def on_completed(self) -> None:
+                file = self.file_handlers.get(file_path)
+                if file is not None:
+                    await file.aclose()
+                return None
+
+        new_subscriber = AnonymousSubscriber()
 
         await self.subscribe(new_subscriber)
 
-    async def to_opened_async_file(
+    async def to_file_overwriting(
         self: Observable[A],
-        opened_file: AsyncFile[Any],
+        file_path: Path,
         serialize: Callable[[A], str] = str,
         write_newline: bool = True,
+        overwrite_every_n: int = 200,
     ) -> None:
-        """Writes to an already opened io / file, asynchronously"""
+        """Write all emitted values to a file, by overwriting the current file.
+        Note that this stores values to a buffer, so this can lead to an OOM in large files.
+        We recommend to use to_file_appending instead if memory is a concern
 
+        Parameters
+        ----------
+        file_path : Path
+            Path to write output file to.
+        serialize : Callable, default str
+            Function to serialize items to strings.
+        write_newline : bool, default True
+            Whether to write newline after each value.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2, 3])
+        >>> await obs.to_file('data.txt')
+        """
+
+        # lock to prevent multiple awaitables from writing at the same time
         can_write = anyio.Semaphore(1)
+        buffer: list[str] = []
 
-        async def on_next(value: A) -> Acknowledgement:
-            async with can_write:
-                await opened_file.write(serialize(value) + ('\n' if write_newline else ''))
-            return Acknowledgement.ok
+        class AnonymousSubscriber(Subscriber[Any]):
+            def __init__(self) -> None:
+                self.file_handlers: dict[Path, AsyncFile[str]] = {}
 
-        file_subscriber = create_subscriber(on_next=on_next)
+            async def on_next(self, value: A) -> Acknowledgement:
+                # Only open file ONCE when first value is received
+                if file_path not in self.file_handlers:
+                    # First time
+                    file_path.parent.touch(exist_ok=True)
+                    file = await anyio.open_file(file_path, mode="w")
+                    self.file_handlers[file_path] = file
+                else:
+                    file = self.file_handlers[file_path]
+                async with can_write:
+                    buffer.append(serialize(value) + ('\n' if write_newline else ''))
+                    if len(buffer) == overwrite_every_n:
+                        await file.writelines(buffer)
+                return Acknowledgement.ok
 
-        await self.subscribe(file_subscriber)
+            async def on_error(self, error: Exception) -> None:
+                file = self.file_handlers.get(file_path)
+                if file is not None:
+                    async with can_write:
+                        # Write the buffer
+                        await file.writelines(buffer)
+                        await file.aclose()
+                raise error
 
-    async def to_opened_file(
-        self,
-        opened_file: IO[Any],
-        write_newline: bool = True,
-    ) -> None:
-        """Writes to an already opened io / file."""
+            async def on_completed(self) -> None:
+                file = self.file_handlers.get(file_path)
+                if file is not None:
+                    async with can_write:
+                        # Write the buffer
+                        await file.writelines(buffer)
+                        await file.aclose()
+                return None
 
-        async def on_next(value: Any) -> Acknowledgement:
-            opened_file.write(value + ('\n' if write_newline else ''))
-            return Acknowledgement.ok
+        new_subscriber = AnonymousSubscriber()
 
-        file_subscriber = create_subscriber(on_next=on_next)
-
-        await self.subscribe(file_subscriber)
+        await self.subscribe(new_subscriber)
 
     async def reduce(self, func: Callable[[A, A], A], initial: A) -> A:
         """Reduce the Observable using `func`, starting with `initial`.
