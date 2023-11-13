@@ -48,9 +48,9 @@ class PrintSubscriber(Subscriber[T_contra]):
 
 
 def create_subscriber(
-    on_next: Callable[[T_contra], Awaitable[Acknowledgement]] | None = None,
-    on_error: Callable[[Exception], Awaitable[None]] | None = None,
-    on_completed: Callable[[], Awaitable[None]] | None = None,
+    on_next: Callable[[T_contra], Awaitable[Acknowledgement]] | None,
+    on_error: Callable[[Exception], Awaitable[None]] | None,
+    on_completed: Callable[[], Awaitable[None]] | None,
 ) -> Subscriber[T_contra]:
     """Create an Subscriber from functions.
     This is so that you don't need to create a class everything

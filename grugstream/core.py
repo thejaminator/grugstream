@@ -334,7 +334,7 @@ class Observable(ABC, Generic[A_co]):
         [1, 2]
         """
 
-        class AsyncIterableObservable(Observable[B]):
+        class AsyncIterableObservable(Observable[A]):  # type: ignore
             async def subscribe(self, subscriber: Subscriber[A]) -> None:
                 generator = thunk()
                 ack = Acknowledgement.ok
@@ -713,7 +713,9 @@ class Observable(ABC, Generic[A_co]):
                 async def on_completed() -> None:
                     await send_stream.aclose()
 
-                send_to_stream_subscriber = create_subscriber(on_next=on_next, on_completed=on_completed)
+                send_to_stream_subscriber = create_subscriber(
+                    on_next=on_next, on_completed=on_completed, on_error=subscriber.on_error
+                )
 
                 async with create_task_group() as tg:
                     tg.start_soon(source.subscribe, send_to_stream_subscriber)
@@ -1004,6 +1006,8 @@ class Observable(ABC, Generic[A_co]):
 
             filter_subscriber = create_subscriber(
                 on_next=on_next,
+                on_error=subscriber.on_error,
+                on_completed=subscriber.on_completed,
             )
             await self.subscribe(filter_subscriber)
 
@@ -1322,7 +1326,7 @@ class Observable(ABC, Generic[A_co]):
                         await anyio.sleep(seconds)
                         try:
                             value = receive_stream.receive_nowait()
-                            response = await subscriber.on_next(value)
+                            response = await subscriber.on_next(value)  # type: ignore
                             if response == Acknowledgement.stop:
                                 await subscriber.on_completed()
                                 tg.cancel_scope.cancel()
@@ -1454,7 +1458,11 @@ class Observable(ABC, Generic[A_co]):
             result.append(value)
             return Acknowledgement.ok
 
-        list_subscriber: Subscriber[A] = create_subscriber(on_next=on_next)
+        list_subscriber: Subscriber[A] = create_subscriber(
+            on_next=on_next,
+            on_error=None,
+            on_completed=None,
+        )
         await self.subscribe(list_subscriber)
 
         return result
@@ -1495,7 +1503,7 @@ class Observable(ABC, Generic[A_co]):
             result.add(value)
             return Acknowledgement.ok
 
-        set_subscriber = create_subscriber(on_next=on_next)
+        set_subscriber = create_subscriber(on_next=on_next, on_completed=None, on_error=None)
 
         await self.subscribe(set_subscriber)
 
@@ -1590,7 +1598,7 @@ class Observable(ABC, Generic[A_co]):
             async def on_next(self, value: A) -> Acknowledgement:
                 # Only open file ONCE when first value is received
                 if file_path not in self.file_handlers:
-                    file_path.parent.mkdir(exist_ok=True, parents=True)
+                    file_path.touch(exist_ok=True)
                     file = await anyio.open_file(file_path, mode="a")
                     self.file_handlers[file_path] = file
                 else:
@@ -1717,7 +1725,7 @@ class Observable(ABC, Generic[A_co]):
             result = func(result, value)
             return Acknowledgement.ok
 
-        reduce_subscriber = create_subscriber(on_next=on_next)
+        reduce_subscriber = create_subscriber(on_next=on_next, on_completed=None, on_error=None)
 
         await self.subscribe(reduce_subscriber)
 
@@ -1763,7 +1771,7 @@ class Observable(ABC, Generic[A_co]):
             result = value if result is None else result + value
             return Acknowledgement.ok
 
-        reduce_subscriber = create_subscriber(on_next=on_next)
+        reduce_subscriber = create_subscriber(on_next=on_next, on_completed=None, on_error=None)
 
         await self.subscribe(reduce_subscriber)
 
@@ -1834,7 +1842,9 @@ class Observable(ABC, Generic[A_co]):
                     await subscriber.on_completed()
                     return Acknowledgement.stop
 
-            take_subscriber = create_subscriber(on_next=on_next)
+            take_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
 
             await source.subscribe(take_subscriber)
 
@@ -1873,7 +1883,9 @@ class Observable(ABC, Generic[A_co]):
                     await subscriber.on_completed()
                     return Acknowledgement.stop
 
-            take_subscriber = create_subscriber(on_next=on_next)
+            take_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
 
             await source.subscribe(take_subscriber)
 
@@ -1914,7 +1926,9 @@ class Observable(ABC, Generic[A_co]):
                     await subscriber.on_completed()
                     return Acknowledgement.stop
 
-            take_subscriber = create_subscriber(on_next=on_next)
+            take_subscriber = create_subscriber(
+                on_next=on_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
+            )
 
             await source.subscribe(take_subscriber)
 
@@ -2004,7 +2018,7 @@ class Observable(ABC, Generic[A_co]):
             count = count + 1
             return Acknowledgement.ok
 
-        subscriber = create_subscriber(on_next=on_next)
+        subscriber = create_subscriber(on_next=on_next, on_completed=None, on_error=None)
 
         await self.subscribe(subscriber)
 
