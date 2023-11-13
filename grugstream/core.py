@@ -1558,7 +1558,6 @@ class Observable(ABC, Generic[A_co]):
             Function to serialize items to strings.
         write_newline : bool, default True
             Whether to write newline after each value.
-
         Examples
         --------
         >>> obs = Observable.from_iterable([1, 2, 3])
@@ -1605,7 +1604,7 @@ class Observable(ABC, Generic[A_co]):
         file_path: Path,
         serialize: Callable[[A], str] = str,
         write_newline: bool = True,
-        overwrite_every_n: int = 200,
+        write_every_n: int = 100,
     ) -> None:
         """Write all emitted values to a file, by overwriting the current file.
         Note that this stores values to a buffer, so this can lead to an OOM in large files.
@@ -1619,6 +1618,9 @@ class Observable(ABC, Generic[A_co]):
             Function to serialize items to strings.
         write_newline : bool, default True
             Whether to write newline after each value.
+        write_every_n : int, default 200
+            Only writes to the file every n values. A higher value prevents your stream from slowing
+            down due to slow write times.
 
         Examples
         --------
@@ -1645,7 +1647,7 @@ class Observable(ABC, Generic[A_co]):
                     file = self.file_handlers[file_path]
                 async with can_write:
                     buffer.append(serialize(value) + ('\n' if write_newline else ''))
-                    if len(buffer) == overwrite_every_n:
+                    if len(buffer) == write_every_n:
                         await file.writelines(buffer)
                 return Acknowledgement.ok
 
