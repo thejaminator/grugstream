@@ -427,7 +427,7 @@ async def test_to_file(tmp_path: Path):
     file_path = tmp_path / "testfile.txt"
 
     # Write to file
-    await observable.to_file(file_path)
+    await observable.to_file_appending(file_path)
 
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
@@ -444,7 +444,7 @@ async def test_for_each_to_file(tmp_path: Path):
     file_path = tmp_path / "testfile.txt"
 
     # Write to file
-    await observable.for_each_to_file(file_path).run_to_completion()
+    await observable.for_each_to_file_appending(file_path).run_to_completion()
 
     # Check the file contents
     file_contents = file_path.read_text().splitlines()
@@ -477,7 +477,7 @@ async def test_to_file_from_file(tmp_path: Path):
     file_path = tmp_path / Path("testfile.txt")
 
     # Write to file
-    await observable.to_file(file_path)
+    await observable.to_file_appending(file_path)
 
     # Create an observable from the file
     new_observable = Observable.from_file(file_path)

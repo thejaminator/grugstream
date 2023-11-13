@@ -869,20 +869,19 @@ class Observable(ABC, Generic[A_co]):
 
         return self.map_async(send)
 
-    def for_each_to_file(
+    def for_each_to_file_appending(
         self: Observable[A],
         file_path: Path,
-        mode: OpenTextMode = 'a',
         serialize: Callable[[A], str] = str,
         write_newline: bool = True,
     ) -> "Observable[A]":
         """
+        Pass through and appends to a file continuously
+
         Parameters
         ----------
         file_path : Path
             Path to write the file to.
-        mode : OpenTextMode, default 'a'
-            File open mode.
         serialize : Callable, default str
             Function to serialize values to strings.
         write_newline : bool, default True
@@ -907,7 +906,8 @@ class Observable(ABC, Generic[A_co]):
         async def subscribe(subscriber: Subscriber[A]) -> None:
             async def on_next(value: A) -> Acknowledgement:
                 if file_path not in source.file_handlers:
-                    file = await anyio.open_file(file_path, mode=mode)
+                    file_path.parent.mkdir(exist_ok=True, parents=True)
+                    file = await anyio.open_file(file_path, mode="a")
                     source.file_handlers[file_path] = file
                 else:
                     file = source.file_handlers[file_path]
@@ -1539,21 +1539,19 @@ class Observable(ABC, Generic[A_co]):
                         yield item
                     processing_limit.release_on_behalf_of(item)
 
-    async def to_file(
+    async def to_file_appending(
         self: Observable[A],
         file_path: Path,
-        mode: OpenTextMode = 'a',
         serialize: Callable[[A], str] = str,
         write_newline: bool = True,
     ) -> None:
-        """Write all emitted values to a file.
+        """Write all emitted values to a file, by appending.
+        Note that this appends to a file, rather than overwriting it.
 
         Parameters
         ----------
         file_path : Path
             Path to write output file to.
-        mode : OpenTextMode, default 'a'
-            Mode to open file with.
         serialize : Callable, default str
             Function to serialize items to strings.
         write_newline : bool, default True
@@ -1571,7 +1569,8 @@ class Observable(ABC, Generic[A_co]):
         async def on_next(value: A) -> Acknowledgement:
             # Only open file ONCE when first value is received
             if file_path not in self.file_handlers:
-                file = await anyio.open_file(file_path, mode=mode)
+                file_path.parent.mkdir(exist_ok=True, parents=True)
+                file = await anyio.open_file(file_path, mode="a")
                 self.file_handlers[file_path] = file
             else:
                 file = self.file_handlers[file_path]

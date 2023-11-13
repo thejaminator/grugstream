@@ -49,7 +49,7 @@ async def main():
         .take(1000)
     )
     # Output the results to a file line by line
-    await observable.to_file(Path("results.txt"))
+    await observable.to_file_appending(Path("results.txt"))
 
 
 if __name__ == "__main__":
