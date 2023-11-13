@@ -13,8 +13,10 @@ async def main():
     def throw() -> None:
         raise ValueError("error")
 
-    observable = Observable.from_iterable(test_data).for_each_enumerated(
-        lambda idx, item: None if idx != len(test_data) - 1 else throw()
+    observable = (
+        Observable.from_iterable(test_data)
+        .for_each_enumerated(lambda idx, item: None if idx != len(test_data) - 1 else throw())
+        .on_error_restart(max_restarts=10)
     )
 
     # Set up the output file path

@@ -666,7 +666,7 @@ class Observable(ABC, Generic[A_co]):
 
         return self.map_async_par(wrapped_func, max_par=int(limiter.total_tokens), max_buffer_size=max_buffer_size)
 
-    def buffer_with_size(self: Observable[A], max_buffer_size: int | None = 50) -> 'Observable[A]':
+    def buffer_with_size(self: Observable[A], max_buffer_size: int | None = 100_000) -> 'Observable[A]':
         """Adds a buffer to the stream
 
         Parameters
@@ -716,7 +716,7 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def map_async_par(
-        self: Observable[A], func: Callable[[A], Awaitable[B]], max_buffer_size: int | None = 50, max_par: int = 50
+        self: Observable[A], func: Callable[[A], Awaitable[B]], max_buffer_size: int | None = 100, max_par: int = 50
     ) -> 'Observable[B]':
         """Map values asynchronously in parallel using func.
 
@@ -939,6 +939,53 @@ class Observable(ABC, Generic[A_co]):
             return value
 
         return self.map_async(send)
+
+    def on_error_restart(
+        self: Observable[A_co],
+        max_restarts: int | None = None,
+        exceptions: tuple[type[Exception]] = (Exception,),
+        log_restarting_func: Callable[[int, Exception], None]
+        | None = lambda restart_count, exception: print(
+            f"Encountered {exception}, restarting with try {restart_count}"
+        ),
+        log_unhandled_func: Callable[[int, Exception], None]
+        | None = lambda restart_count, exception: print(
+            f"Encountered unhandled {exception}, total restarts so far: {restart_count}"
+        ),
+    ) -> "Observable[A_co]":
+        """Restarts the observable if the exceptions are encountered"""
+        source = self
+        count = 0
+        if max_restarts is not None:
+            assert max_restarts > 0, "max_restarts must be more than 0"
+        max_restarts_num = max_restarts if max_restarts is not None else math.inf
+
+        async def subscribe(subscriber: Subscriber[A_co]) -> None:
+            async def on_error(error: Exception) -> None:
+                if isinstance(error, exceptions):
+                    nonlocal count
+                    count += 1
+                    if count <= max_restarts_num:
+                        if log_restarting_func:
+                            log_restarting_func(count, error)
+                        # restart
+                        restarted_subscriber = create_subscriber(
+                            on_next=subscriber.on_next, on_error=on_error, on_completed=subscriber.on_completed
+                        )
+                        await source.subscribe(restarted_subscriber)
+                        return None
+                if log_unhandled_func:
+                    log_unhandled_func(count, error)
+                # Raise if max restart reached or not caught
+                raise error
+
+            subscriber_with_on_error = create_subscriber(
+                on_next=subscriber.on_next, on_error=on_error, on_completed=subscriber.on_completed
+            )
+
+            await source.subscribe(subscriber_with_on_error)
+
+        return create_observable(subscribe)
 
     def for_each_to_file_appending(
         self: Observable[A],

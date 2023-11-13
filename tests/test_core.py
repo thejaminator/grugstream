@@ -556,6 +556,46 @@ async def test_to_file_overwriting_twice(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_on_error_restart(tmp_path: Path):
+    counter = 0
+
+    def throw() -> None:
+        nonlocal counter
+        counter += 1
+        raise ValueError("error")
+
+    observable = (
+        Observable.from_interval(seconds=0.01)
+        .for_each_enumerated(lambda idx, item: throw() if idx >= 10 else None)
+        .on_error_restart(max_restarts=5)
+    )
+
+    with pytest.raises(ValueError):
+        await observable.run_to_completion()
+    # assert that we restarted 5 times, this means that the counter should be 6
+    assert counter == 6
+
+
+@pytest.mark.asyncio
+async def test_on_error_restart_async(tmp_path: Path):
+    counter = 0
+
+    async def throw() -> None:
+        nonlocal counter
+        counter += 1
+        raise ValueError("error")
+
+    observable = (
+        Observable.from_interval(seconds=0.01).map_async_par(lambda x: throw()).on_error_restart(max_restarts=5)
+    )
+
+    with pytest.raises(BaseExceptionGroup):
+        await observable.run_to_completion()
+    # assert that we restarted 5 times, this means that the counter should be 6
+    assert counter == 6
+
+
+@pytest.mark.asyncio
 async def test_for_each_to_file(tmp_path: Path):
     # Create some test data
     test_data = ["Hello", "world!", "This", "is", "a", "test."]
