@@ -826,7 +826,7 @@ class Observable(ABC, Generic[A_co]):
 
         return self.for_each(counter_update)
 
-    def for_each(self: Observable[A], func: Callable[[A], None]) -> "Observable[A]":
+    def for_each(self: Observable[A], func: Callable[[A], Any]) -> "Observable[A]":
         """Apply func to each value but don't modify stream.
 
         Parameters
@@ -855,7 +855,7 @@ class Observable(ABC, Generic[A_co]):
 
         return self.map(return_original)
 
-    def for_each_enumerated(self: Observable[A], func: Callable[[int, A], None]) -> "Observable[A]":
+    def for_each_enumerated(self: Observable[A], func: Callable[[int, A], Any]) -> "Observable[A]":
         """Apply indexed func to each value, but don't modify stream.
 
         Parameters

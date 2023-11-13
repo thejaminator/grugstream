@@ -577,6 +577,26 @@ async def test_on_error_restart(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_on_error_restart_list():
+    counter = 0
+
+    def throw_5_times(item: int) -> None:
+        nonlocal counter
+        counter += 1
+        if counter <= 5:
+            raise ValueError("error")
+
+    observable = (
+        Observable.from_iterable([1, 2, 3, 4, 5, 6])
+        .for_each(lambda x: throw_5_times(x))
+        .on_error_restart(max_restarts=5)
+    )
+
+    results = await observable.to_list()
+    assert results == [1, 2, 3, 4, 5, 6]
+
+
+@pytest.mark.asyncio
 async def test_on_error_restart_async(tmp_path: Path):
     counter = 0
 
