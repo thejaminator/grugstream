@@ -57,10 +57,11 @@ class Addable(Protocol):
 CanAdd = TypeVar("CanAdd", bound=Addable)
 
 
-def create_observable(subscribe: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
+def create_observable(new_subscribe_func: Callable[["Subscriber[A_co]"], Awaitable[None]]) -> "Observable[A_co]":
+    """Creates an Observable with a new subscribe function"""
     class AnonObservable(Observable[A_co]):  # type: ignore
         async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
-            await subscribe(subscriber)
+            await new_subscribe_func(subscriber)
 
     return AnonObservable()
 
@@ -970,7 +971,7 @@ class Observable(ABC, Generic[A_co]):
 
         return self.map_async(return_original)
 
-    def filter(self, predicate: Callable[[A_co], bool]) -> "Observable[A_co]":
+    def filter(self: Observable[A], predicate: Callable[[A], bool]) -> "Observable[A_co]":
         """Filter values emitted by this Observable.
 
         Parameters
@@ -991,7 +992,19 @@ class Observable(ABC, Generic[A_co]):
         [2, 4]
 
         """
-        return FilteredObservable(source=self, predicate=predicate)
+
+        async def new_subsribe_func(subscriber: Subscriber[A]) -> None:
+            async def on_next(value: A) -> Acknowledgement:
+                if predicate(value):
+                    return await subscriber.on_next(value)
+                return Acknowledgement.ok
+
+            filter_subscriber = create_subscriber(
+                on_next=on_next,
+            )
+            await self.subscribe(filter_subscriber)
+
+        return create_observable(new_subsribe_func)
 
     def distinct(self: 'Observable[CanHash]') -> 'Observable[CanHash]':
         """Filter Observable to only emit distinct values.
@@ -2043,22 +2056,3 @@ class Observable(ABC, Generic[A_co]):
             tg.start_soon(timeout_task)
 
         return count
-
-
-class FilteredObservable(Observable[A]):
-    def __init__(self, source: Observable[A], predicate: Callable[[A], bool]):
-        self.source = source
-        self.predicate = predicate
-
-    async def subscribe(self, subscriber: Subscriber[A]) -> None:
-        async def on_next(value: A) -> Acknowledgement:
-            if self.predicate(value):
-                return await subscriber.on_next(value)
-            return Acknowledgement.ok
-
-        filter_subscriber = create_subscriber(
-            on_next=on_next,
-            on_error=subscriber.on_error,
-            on_completed=subscriber.on_completed,
-        )
-        await self.source.subscribe(filter_subscriber)
