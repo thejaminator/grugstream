@@ -435,7 +435,7 @@ class Observable(ABC, Generic[A_co]):
         """Subscribe async subscriber."""
         pass
 
-    def enumerated(self) -> "Observable[tuple[int, A_co]]":
+    def enumerated(self: Observable[A]) -> "Observable[tuple[int, A]]":
         """Enumerate the values emitted by this Observable.
 
         Returns
@@ -453,10 +453,10 @@ class Observable(ABC, Generic[A_co]):
         """
         source = self
 
-        async def subscribe(subscriber: Subscriber[tuple[int, A_co]]) -> None:
+        async def subscribe(subscriber: Subscriber[tuple[int, A]]) -> None:
             counter = 0
 
-            async def on_next(value: A_co) -> Acknowledgement:
+            async def on_next(value: A) -> Acknowledgement:
                 nonlocal counter
                 idx = counter
                 transformed_value = (idx, value)
@@ -471,7 +471,7 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe)
 
-    def map(self, func: Callable[[A_co], B_co]) -> "Observable[B_co]":
+    def map(self: Observable[A], func: Callable[[A], B_co]) -> "Observable[B_co]":
         """Map values emitted by this Observable.
 
         Applies a mapping function to each item emitted by the source.
@@ -496,7 +496,7 @@ class Observable(ABC, Generic[A_co]):
         source = self
 
         async def subscribe(subscriber: Subscriber[B_co]) -> None:
-            async def on_next(value: A_co) -> Acknowledgement:
+            async def on_next(value: A) -> Acknowledgement:
                 transformed_value = func(value)
                 return await subscriber.on_next(transformed_value)
 
@@ -552,7 +552,7 @@ class Observable(ABC, Generic[A_co]):
         """
         return self.map(lambda x: func(x[0], x[1]))
 
-    def map_async(self, func: Callable[[A_co], Awaitable[B_co]]) -> 'Observable[B_co]':
+    def map_async(self: Observable[A], func: Callable[[A], Awaitable[B_co]]) -> 'Observable[B_co]':
         """Map values asynchronously using func.
 
         Parameters
@@ -578,7 +578,7 @@ class Observable(ABC, Generic[A_co]):
         source = self
 
         async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
-            async def on_next(value: A_co) -> Acknowledgement:
+            async def on_next(value: A) -> Acknowledgement:
                 transformed_value = await func(value)
                 return await subscriber.on_next(transformed_value)
 
@@ -616,7 +616,7 @@ class Observable(ABC, Generic[A_co]):
         return self.map_async(lambda x: func(x[0], x[1]))
 
     def map_blocking_par(
-        self, func: Callable[[A_co], B_co], max_par: int | CapacityLimiter = 50, max_buffer_size: int = 50
+        self: Observable[A], func: Callable[[A], B_co], max_par: int | CapacityLimiter = 50, max_buffer_size: int = 50
     ) -> 'Observable[B_co]':
         """Map values blocking functions in parallel using func.
         Only use this for IO bound functions - e.g. old code that aren't async functions
@@ -647,13 +647,13 @@ class Observable(ABC, Generic[A_co]):
         limiter: CapacityLimiter = max_par if isinstance(max_par, CapacityLimiter) else CapacityLimiter(max_par)
         from anyio import to_thread
 
-        async def wrapped_func(value: A_co) -> B_co:
+        async def wrapped_func(value: A) -> B_co:
             return await to_thread.run_sync(func, value, limiter=limiter)
 
         return self.map_async_par(wrapped_func, max_par=int(limiter.total_tokens), max_buffer_size=max_buffer_size)
 
     def map_async_par(
-        self, func: Callable[[A_co], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
+        self: Observable[A], func: Callable[[A], Awaitable[B]], max_buffer_size: int = 50, max_par: int = 50
     ) -> 'Observable[B]':
         """Map values asynchronously in parallel using func.
 
@@ -688,7 +688,7 @@ class Observable(ABC, Generic[A_co]):
         ) -> None:
             semaphore = anyio.Semaphore(max_par)
 
-            async def process_item(item: A_co) -> None:
+            async def process_item(item: A) -> None:
                 async with semaphore:
                     result = await func(item)
                     ack = await subscriber.on_next(result)
@@ -702,7 +702,7 @@ class Observable(ABC, Generic[A_co]):
             send_stream, receive_stream = create_memory_object_stream(max_buffer_size=max_buffer_size)
             try:
 
-                async def on_next(value: A_co) -> Acknowledgement:
+                async def on_next(value: A) -> Acknowledgement:
                     await send_stream.send(value)
                     return Acknowledgement.ok
 
@@ -724,8 +724,8 @@ class Observable(ABC, Generic[A_co]):
         return create_observable(subscribe_async)
 
     def for_each_count(
-        self, counter: Counter[Any], key: Callable[[A_co], CanHash] = lambda x: "count"
-    ) -> "Observable[A_co]":
+        self: Observable[A], counter: Counter[Any], key: Callable[[A], CanHash] = lambda x: "count"
+    ) -> "Observable[A]":
         """Increment counter for each value.
 
         Parameters
@@ -749,13 +749,13 @@ class Observable(ABC, Generic[A_co]):
         Counter({"count": 1})
         """
 
-        def counter_update(ele: A_co):
+        def counter_update(ele: A):
             counter_key = key(ele)
             counter[counter_key] += 1
 
         return self.for_each(counter_update)
 
-    def for_each(self, func: Callable[[A_co], None]) -> "Observable[A_co]":
+    def for_each(self: Observable[A], func: Callable[[A], None]) -> "Observable[A]":
         """Apply func to each value but don't modify stream.
 
         Parameters
@@ -778,13 +778,13 @@ class Observable(ABC, Generic[A_co]):
         [1, 2, 3]
         """
 
-        def return_original(value: A_co) -> A_co:
+        def return_original(value: A) -> A:
             func(value)
             return value
 
         return self.map(return_original)
 
-    def for_each_enumerated(self, func: Callable[[int, A_co], None]) -> "Observable[A_co]":
+    def for_each_enumerated(self: Observable[A], func: Callable[[int, A], None]) -> "Observable[A]":
         """Apply indexed func to each value, but don't modify stream.
 
         Parameters
@@ -807,13 +807,13 @@ class Observable(ABC, Generic[A_co]):
         ['a', 'b', 'c']
         """
 
-        def return_original(idx: int, value: A_co) -> A_co:
+        def return_original(idx: int, value: A) -> A:
             func(idx, value)
             return value
 
         return self.enumerated().map_2(return_original)
 
-    def for_each_to_list(self, collect_list: list[A_co]) -> "Observable[A_co]":
+    def for_each_to_list(self: Observable[A], collect_list: list[A]) -> "Observable[A]":
         """Append each value to a list.
 
         Parameters
@@ -836,13 +836,13 @@ class Observable(ABC, Generic[A_co]):
         [1, 2, 3]
         """
 
-        def append_to_list(value: A_co) -> A_co:
+        def append_to_list(value: A) -> A:
             collect_list.append(value)
             return value
 
         return self.map(append_to_list)
 
-    def for_each_to_stream(self, stream: MemoryObjectSendStream[A_co]) -> "Observable[A_co]":
+    def for_each_to_stream(self: Observable[A], stream: MemoryObjectSendStream[A]) -> "Observable[A]":
         """Send each value to a stream.
 
         Parameters
@@ -863,19 +863,19 @@ class Observable(ABC, Generic[A_co]):
         >>> # `send_stream` will have received the values
         """
 
-        async def send(value: A_co) -> A_co:
+        async def send(value: A) -> A:
             await stream.send(value)
             return value
 
         return self.map_async(send)
 
     def for_each_to_file(
-        self,
+        self: Observable[A],
         file_path: Path,
         mode: OpenTextMode = 'a',
-        serialize: Callable[[A_co], str] = str,
+        serialize: Callable[[A], str] = str,
         write_newline: bool = True,
-    ) -> "Observable[A_co]":
+    ) -> "Observable[A]":
         """
         Parameters
         ----------
@@ -904,8 +904,8 @@ class Observable(ABC, Generic[A_co]):
         # need a lock to prevent multiple awaitable when it isn't ok to write yet
         can_write = anyio.Semaphore(1)
 
-        async def subscribe(subscriber: Subscriber[A_co]) -> None:
-            async def on_next(value: A_co) -> Acknowledgement:
+        async def subscribe(subscriber: Subscriber[A]) -> None:
+            async def on_next(value: A) -> Acknowledgement:
                 if file_path not in source.file_handlers:
                     file = await anyio.open_file(file_path, mode=mode)
                     source.file_handlers[file_path] = file
@@ -933,13 +933,9 @@ class Observable(ABC, Generic[A_co]):
 
             await source.subscribe(new_subscriber)
 
-        class AnonObservable(Observable[A]):
-            async def subscribe(self, subscriber: Subscriber[A]) -> None:
-                await subscribe(subscriber)
+        return create_observable(subscribe)
 
-        return AnonObservable()
-
-    def for_each_async(self, func: Callable[[A_co], Awaitable[None]]) -> "Observable[A_co]":
+    def for_each_async(self: Observable[A], func: Callable[[A], Awaitable[None]]) -> "Observable[A]":
         """Apply asynchronous func to each value.
 
         Parameters
@@ -966,7 +962,7 @@ class Observable(ABC, Generic[A_co]):
         [1, 2, 3]
         """
 
-        async def return_original(value: A_co) -> A_co:
+        async def return_original(value: A) -> A:
             await func(value)
             return value
 
@@ -1153,7 +1149,7 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def flatten_observable_sequential(self: 'Observable[Observable[B_co]]') -> 'Observable[B_co]':
+    def flatten_observable_sequential(self: 'Observable[Observable[B]]') -> 'Observable[B]':
         """Flatten Observable of Observables into one Observable.
 
         Flattens an Observable emitting other Observables, into a single
@@ -1176,11 +1172,11 @@ class Observable(ABC, Generic[A_co]):
         [1, 2, 3, 4]
         """
 
-        async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
-            async def on_inner_next(value: B_co) -> Acknowledgement:
+        async def subscribe_async(subscriber: Subscriber[B]) -> None:
+            async def on_inner_next(value: B) -> Acknowledgement:
                 return await subscriber.on_next(value)
 
-            async def on_next(inner_observable: Observable[B_co]) -> Acknowledgement:
+            async def on_next(inner_observable: Observable[B]) -> Acknowledgement:
                 inner_subscriber = create_subscriber(
                     on_next=on_inner_next, on_error=subscriber.on_error, on_completed=subscriber.on_completed
                 )
@@ -1195,7 +1191,7 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def flatten_observable(self: 'Observable[Observable[B_co]]') -> 'Observable[B_co]':
+    def flatten_observable(self: 'Observable[Observable[B]]') -> 'Observable[B]':
         """Flatten Observable of Observables into one Observable.
 
         Flattens an Observable emitting other Observables, into a single
@@ -1219,9 +1215,9 @@ class Observable(ABC, Generic[A_co]):
         [1, 3, 4, 2]
         """
 
-        async def subscribe_async(subscriber: Subscriber[B_co]) -> None:
-            async def subscribe_inner(inner_observable: Observable[B_co]) -> None:
-                async def on_next(value: B_co) -> Acknowledgement:
+        async def subscribe_async(subscriber: Subscriber[B]) -> None:
+            async def subscribe_inner(inner_observable: Observable[B]) -> None:
+                async def on_next(value: B) -> Acknowledgement:
                     ack = await subscriber.on_next(value)
                     if ack == Acknowledgement.stop:
                         tg.cancel_scope.cancel()
@@ -1420,7 +1416,7 @@ class Observable(ABC, Generic[A_co]):
 
         return TQDMObservable()
 
-    async def to_list(self) -> list[A_co]:
+    async def to_list(self: Observable[A]) -> list[A]:
         """Collect all values from the Observable into a list.
 
         Returns
@@ -1436,11 +1432,11 @@ class Observable(ABC, Generic[A_co]):
         """
         result = []
 
-        async def on_next(value: A_co) -> Acknowledgement:
+        async def on_next(value: A) -> Acknowledgement:
             result.append(value)
             return Acknowledgement.ok
 
-        list_subscriber: Subscriber[A_co] = create_subscriber(on_next=on_next)
+        list_subscriber: Subscriber[A] = create_subscriber(on_next=on_next)
         await self.subscribe(list_subscriber)
 
         return result
@@ -1461,7 +1457,7 @@ class Observable(ABC, Generic[A_co]):
         """
         return Slist(await self.to_list())
 
-    async def to_set(self: "Observable[CanHash]") -> set[A_co]:
+    async def to_set(self: "Observable[CanHash]") -> set[CanHash]:
         """Collect values into a set, removing duplicates.
 
         Returns
@@ -1477,7 +1473,7 @@ class Observable(ABC, Generic[A_co]):
         """
         result = set()
 
-        async def on_next(value: A_co) -> Acknowledgement:
+        async def on_next(value: CanHash) -> Acknowledgement:
             result.add(value)
             return Acknowledgement.ok
 
@@ -1544,10 +1540,10 @@ class Observable(ABC, Generic[A_co]):
                     processing_limit.release_on_behalf_of(item)
 
     async def to_file(
-        self,
+        self: Observable[A],
         file_path: Path,
         mode: OpenTextMode = 'a',
-        serialize: Callable[[A_co], str] = str,
+        serialize: Callable[[A], str] = str,
         write_newline: bool = True,
     ) -> None:
         """Write all emitted values to a file.
@@ -1572,7 +1568,7 @@ class Observable(ABC, Generic[A_co]):
         # lock to prevent multiple awaitables from writing at the same time
         can_write = anyio.Semaphore(1)
 
-        async def on_next(value: A_co) -> Acknowledgement:
+        async def on_next(value: A) -> Acknowledgement:
             # Only open file ONCE when first value is received
             if file_path not in self.file_handlers:
                 file = await anyio.open_file(file_path, mode=mode)
@@ -1600,16 +1596,16 @@ class Observable(ABC, Generic[A_co]):
         await self.subscribe(new_subscriber)
 
     async def to_opened_async_file(
-        self,
+        self: Observable[A],
         opened_file: AsyncFile[Any],
-        serialize: Callable[[A_co], str] = str,
+        serialize: Callable[[A], str] = str,
         write_newline: bool = True,
     ) -> None:
         """Writes to an already opened io / file, asynchronously"""
 
         can_write = anyio.Semaphore(1)
 
-        async def on_next(value: A_co) -> Acknowledgement:
+        async def on_next(value: A) -> Acknowledgement:
             async with can_write:
                 await opened_file.write(serialize(value) + ('\n' if write_newline else ''))
             return Acknowledgement.ok
@@ -1740,7 +1736,7 @@ class Observable(ABC, Generic[A_co]):
             raise GrugSumError("Cannot sum an empty observable")
         return result
 
-    def take(self, n: int) -> 'Observable[A_co]':
+    def take(self: Observable[A], n: int) -> 'Observable[A]':
         """Take the first n values from the Observable.
 
         Parameters
@@ -1762,10 +1758,10 @@ class Observable(ABC, Generic[A_co]):
         """
         source = self
 
-        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
             count = 0
 
-            async def on_next(value: A_co) -> Acknowledgement:
+            async def on_next(value: A) -> Acknowledgement:
                 nonlocal count
                 count += 1
                 if count < n:
@@ -1784,7 +1780,7 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def take_while_exclusive(self, predicate: Callable[[A_co], bool]) -> 'Observable[A_co]':
+    def take_while_exclusive(self: Observable[A], predicate: Callable[[A], bool]) -> 'Observable[A]':
         """Take values until predicate is false.
 
         Stops **before** emitting the first value where `predicate` is false.
@@ -1808,8 +1804,8 @@ class Observable(ABC, Generic[A_co]):
         """
         source = self
 
-        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
-            async def on_next(value: A_co) -> Acknowledgement:
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            async def on_next(value: A) -> Acknowledgement:
                 if predicate(value):
                     return await subscriber.on_next(value)
                 else:
@@ -1823,7 +1819,7 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def take_while_inclusive(self, predicate: Callable[[A_co], bool]) -> 'Observable[A_co]':
+    def take_while_inclusive(self: Observable[A], predicate: Callable[[A], bool]) -> 'Observable[A]':
         """Take values until predicate is false.
 
         Stops **after** emitting the last value where `predicate` is true.
@@ -1847,8 +1843,8 @@ class Observable(ABC, Generic[A_co]):
         """
         source = self
 
-        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
-            async def on_next(value: A_co) -> Acknowledgement:
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            async def on_next(value: A) -> Acknowledgement:
                 if predicate(value):
                     return await subscriber.on_next(value)
                 else:
@@ -1864,7 +1860,7 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe_async)
 
-    def take_last(self, n: int) -> 'Observable[A_co]':
+    def take_last(self: Observable[A], n: int) -> 'Observable[A]':
         """Take the last n values from the Observable.
 
         Parameters
@@ -1887,8 +1883,8 @@ class Observable(ABC, Generic[A_co]):
         source = self
         buffer = deque(maxlen=n)
 
-        async def subscribe_async(subscriber: Subscriber[A_co]) -> None:
-            async def on_next(value: A_co) -> Acknowledgement:
+        async def subscribe_async(subscriber: Subscriber[A]) -> None:
+            async def on_next(value: A) -> Acknowledgement:
                 buffer.append(value)
                 return Acknowledgement.ok
 
@@ -1943,7 +1939,7 @@ class Observable(ABC, Generic[A_co]):
         """
         count = 0
 
-        async def on_next(value: A_co) -> Acknowledgement:
+        async def on_next(value: Any) -> Acknowledgement:
             nonlocal count
             count = count + 1
             return Acknowledgement.ok
@@ -2005,13 +2001,13 @@ class Observable(ABC, Generic[A_co]):
         return count
 
 
-class FilteredObservable(Observable[A_co]):
-    def __init__(self, source: Observable[A_co], predicate: Callable[[A_co], bool]):
+class FilteredObservable(Observable[A]):
+    def __init__(self, source: Observable[A], predicate: Callable[[A], bool]):
         self.source = source
         self.predicate = predicate
 
-    async def subscribe(self, subscriber: Subscriber[A_co]) -> None:
-        async def on_next(value: A_co) -> Acknowledgement:
+    async def subscribe(self, subscriber: Subscriber[A]) -> None:
+        async def on_next(value: A) -> Acknowledgement:
             if self.predicate(value):
                 return await subscriber.on_next(value)
             return Acknowledgement.ok
