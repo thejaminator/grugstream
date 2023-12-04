@@ -19,6 +19,7 @@ from typing import (
     Any,
     Counter,
 )
+from typing_extensions import deprecated
 
 import anyio
 from anyio import create_task_group, create_memory_object_stream, EndOfStream, CapacityLimiter, AsyncFile
@@ -995,6 +996,16 @@ class Observable(ABC, Generic[A_co]):
 
         return create_observable(subscribe)
 
+    @deprecated("Use for_each_to_file_appending instead, mode has been remove")
+    def for_each_to_file(
+        self,
+        file_path: Path,
+        mode: OpenTextMode = 'a',
+        serialize: Callable[[A_co], str] = str,
+        write_newline: bool = True,
+    ) -> "Observable[A_co]":
+        return self.for_each_to_file_appending(file_path, serialize, write_newline)
+
     def for_each_to_file_appending(
         self: Observable[A],
         file_path: Path,
@@ -1692,6 +1703,16 @@ class Observable(ABC, Generic[A_co]):
                     else:
                         yield item
                     processing_limit.release_on_behalf_of(item)
+
+    @deprecated("Use to_file_appending or to_file_overwriting instead, mode has been removed")
+    async def to_file(
+        self,
+        file_path: Path,
+        mode: OpenTextMode = 'a',
+        serialize: Callable[[A_co], str] = str,
+        write_newline: bool = True,
+    ) -> None:
+        await self.to_file_appending(file_path, serialize, write_newline)
 
     async def to_file_appending(
         self: Observable[A],
