@@ -787,7 +787,7 @@ class Observable(ABC, Generic[A_co]):
                     tg.cancel_scope.cancel()
 
             async for item in receive_stream:
-                tg.start_soon(process_item, item)
+                tg.start_soon(process_item, item) # type: ignore
 
         async def subscribe_async(subscriber: Subscriber[B]) -> None:
             send_stream, receive_stream = create_memory_object_stream(
