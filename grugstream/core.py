@@ -53,8 +53,7 @@ CanHash = TypeVar("CanHash", bound=Hashable)
 
 
 class Addable(Protocol):
-    def __add__(self: A, other: A, /) -> A:
-        ...
+    def __add__(self: A, other: A, /) -> A: ...
 
 
 CanAdd = TypeVar("CanAdd", bound=Addable)
@@ -969,12 +968,10 @@ class Observable(ABC, Generic[A_co]):
         self: Observable[A_co],
         max_restarts: int | None = 1000,
         exceptions: tuple[type[Exception]] = (Exception,),
-        log_restarting_func: Callable[[int, Exception], None]
-        | None = lambda restart_count, exception: print(
+        log_restarting_func: Callable[[int, Exception], None] | None = lambda restart_count, exception: print(
             f"Encountered {exception}, restarting with try {restart_count}"
         ),
-        log_unhandled_func: Callable[[int, Exception], None]
-        | None = lambda restart_count, exception: print(
+        log_unhandled_func: Callable[[int, Exception], None] | None = lambda restart_count, exception: print(
             f"Encountered unhandled {exception}, total restarts so far: {restart_count}"
         ),
     ) -> "Observable[A_co]":

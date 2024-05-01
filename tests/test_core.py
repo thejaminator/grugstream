@@ -604,6 +604,7 @@ async def test_product():
     items = await product.to_list()
     assert items == [(1, "a"), (1, "b"), (1, "c"), (2, "a"), (2, "b"), (2, "c")]
 
+
 @pytest.mark.asyncio
 async def test_on_error_restart_async(tmp_path: Path):
     counter = 0
