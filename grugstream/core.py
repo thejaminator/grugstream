@@ -2,6 +2,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import deque
+from itertools import product
 import math
 from pathlib import Path
 from typing import (
@@ -476,6 +477,29 @@ class Observable(ABC, Generic[A_co]):
             await source.subscribe(map_subscriber)
 
         return create_observable(subscribe)
+
+    def product(self: Observable[A], other: Iterable[B]) -> "Observable[tuple[A, B]]":
+        """Combine values from this Observable with another iterable.
+
+        Parameters
+        ----------
+        other : Iterable
+            The other iterable to combine with.
+
+        Returns
+        -------
+        Observable
+            An Observable of tuples of values from this Observable and the other.
+
+        Examples
+        --------
+        >>> obs = Observable.from_iterable([1, 2])
+        >>> other = ['a', 'b']
+        >>> product = obs.product(other)
+        >>> await product.to_list()
+        [(1, 'a'), (1, 'b'), (2, 'a'), (2, 'b')]
+        """
+        return self.map(lambda x: product([x], other)).flatten_iterable()
 
     def map(self: Observable[A], func: Callable[[A], B_co]) -> "Observable[B_co]":
         """Map values emitted by this Observable.
